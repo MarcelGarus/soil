@@ -52,6 +52,23 @@ void panic(Char* message) {
   exit(1);
 }
 
+typedef struct { Byte* data; Pos len; Pos cap; } Bytes;
+Bytes make_bytes(void) {
+  Bytes vec;
+  vec.data = malloc(8);
+  vec.len = 0;
+  vec.cap = 8;
+  return vec;
+}
+void push_to_bytes(Bytes* vec, Byte byte) {
+  if (vec->len == vec->cap) {
+    vec->cap *= 2;
+    vec->data = realloc(vec->data, vec->cap);
+  }
+  vec->data[vec->len] = byte;
+  vec->len++;
+}
+
 bool is_whitespace(Char c) { return c == ' ' || c == '\n'; }
 bool is_name(Char c) {
   return c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' ||
@@ -59,75 +76,71 @@ bool is_name(Char c) {
 }
 
 typedef struct {
-  Str input;
-  Pos cursor;
+  char current;
+  int line;
 } Parser;
 
-Parser make_parser(Str input) {
+Parser make_parser() {
   Parser p;
-  p.input = input;
-  p.cursor = 0;
+  p.current = (char)EOF;
+  p.line = 0;
   return p;
 }
-bool is_at_end(Parser* this) { return this->cursor >= this->input.len; }
-char current(Parser* this) { return this->input.bytes[this->cursor]; }
-Str rest(Parser* this) {
-  return substr(this->input, this->cursor, this->input.len);
-}
-void advance_by(Parser* this, Pos n) { this->cursor += n; }
-void advance(Parser* this) { advance_by(this, 1); }
+bool is_at_end(Parser* this) { return this->current == (char)EOF; }
+void advance(Parser* this) { this->current = getchar(); }
 void consume_whitespace(Parser* this) {
   while (!is_at_end(this)) {
-    Char c = current(this);
-    if (is_whitespace(c)) {
+    if (this->current == ' ') advance(this);
+    else if (this->current == '\n') {
       advance(this);
-    } else if (c == '|') {
-      while (!is_at_end(this) && current(this) != '\n') advance(this);
-    } else break;
+      this->line++;
+    } else if (this->current == '|') {
+      while (!is_at_end(this) && this->current != '\n') advance(this);
+    } else
+      break;
   }
 }
-bool consume_prefix(Parser* this, Str prefix) {
+bool consume_prefix(Parser* this, char prefix) {
   consume_whitespace(this);
-  if (!starts_with(rest(this), prefix)) return false;
-  advance_by(this, prefix.len);
-  return true;
-}
-bool consume_keyword(Parser* this, Str keyword) {
-  consume_whitespace(this);
-  if (!starts_with(rest(this), keyword)) return false;
-  if (rest(this).len > keyword.len &&
-      !is_name(rest(this).bytes[keyword.len])) return false;
-  advance_by(this, keyword.len);
+  if (this->current != prefix) return false;
+  advance(this);
   return true;
 }
 Str parse_name(Parser* this) {
   consume_whitespace(this);
-  Pos start = this->cursor;
-  while (!is_at_end(this) && is_name(current(this))) advance(this);
-  Pos end = this->cursor;
-  if (start == end) panic("Expected a name.");
-  return substr(this->input, start, end);
+  bool parsed_something = false;
+  Bytes name = make_bytes();
+  while (!is_at_end(this) && is_name(this->current)) {
+    parsed_something = true;
+    push_to_bytes(&name, this->current);
+    advance(this);
+  }
+  if (!parsed_something) panic("Expected a name.");
+  Str name_str;
+  name_str.bytes = name.data;
+  name_str.len = name.len;
+  return name_str;
 }
 Word parse_digits(Parser* this, Word radix) {
-  Pos start = this->cursor;
+  bool parsed_something = false;
   Word num = 0;
   while (!is_at_end(this)) {
-    Char c = current(this);
+    Char c = this->current;
     if (c >= '0' && c <= '0' + min(radix, 10))
       num = num * radix + c - '0';
     else if (radix >= 10 && c >= 'a' && c <= 'a' + min(radix - 10, 26))
       num = num * radix + c - 'a';
     else if (c != '_') break;
     advance(this);
+    parsed_something = true;
   }
-  Pos end = this->cursor;
-  if (start == end) panic("Expected a number.");
+  if (!parsed_something) panic("Expected a number.");
   return num;
 }
 Word parse_num(Parser* this) {
   consume_whitespace(this);
-  if (consume_prefix(this, str("b"))) return parse_digits(this, 2);
-  if (consume_prefix(this, str("x"))) return parse_digits(this, 16);
+  if (consume_prefix(this, 'b')) return parse_digits(this, 2);
+  if (consume_prefix(this, 'x')) return parse_digits(this, 16);
   return parse_digits(this, 10);
 }
 typedef enum { reg_ip, reg_sp, reg_st, reg_a, reg_b, reg_c, reg_d, reg_e } Reg;
@@ -144,11 +157,17 @@ Reg parse_reg(Parser* this) {
   panic("Expected a register.");
 }
 Str parse_str(Parser* this) {
-  if (!consume_prefix(this, str("\""))) panic("Expected a string.");
-  Pos start = this->cursor;
-  while (!is_at_end(this) && current(this) != '"') advance(this);
-  Pos end = this->cursor;
-  return substr(this->input, start, end);
+  if (!consume_prefix(this, '\"')) panic("Expected a string.");
+  Bytes str = make_bytes();
+  while (!is_at_end(this) && this->current != '"') {
+    push_to_bytes(&str, this->current);
+    advance(this);
+  }
+  if (!consume_prefix(this, '\"')) panic("Expected end of string.");
+  Str str_str;
+  str_str.bytes = str.data;
+  str_str.len = str.len;
+  return str_str;
 }
 
 Byte to_bits(Reg reg) {
@@ -163,23 +182,6 @@ Byte to_bits(Reg reg) {
     case reg_e: return 0b0111;
     default: panic("Invalid register.");
   }
-}
-
-typedef struct { Byte* data; Pos len; Pos cap; } Bytes;
-Bytes make_bytes(void) {
-  Bytes vec;
-  vec.data = malloc(8);
-  vec.len = 0;
-  vec.cap = 8;
-  return vec;
-}
-void push_to_bytes(Bytes* vec, Byte byte) {
-  if (vec->len == vec->cap) {
-    vec->cap *= 2;
-    vec->data = realloc(vec->data, vec->cap);
-  }
-  vec->data[vec->len] = byte;
-  vec->len++;
 }
 
 typedef struct { Str label; Pos pos; } LabelAndPos;
@@ -352,12 +354,14 @@ void define_label(Binary* this, Str label) {
   }
 }
 
-void assemble(Str input) {
+void main(int argc, char** argv) {
+  printf("assembling\n");
   Str devices[256];
   Binary binary = empty_binary();
-  Parser parser = make_parser(input);
+  Parser parser = make_parser();
+  advance(&parser);
 
-  while (consume_keyword(&parser, str("device"))) {
+  while (consume_prefix(&parser, '@')) {
     int index = parse_num(&parser);
     Str name = parse_str(&parser);
   }
@@ -368,7 +372,7 @@ void assemble(Str input) {
 
     Str name = parse_name(&parser);
 
-    bool is_label = consume_prefix(&parser, str(":"));
+    bool is_label = consume_prefix(&parser, ':');
     if (is_label) {
       define_label(&binary, name);
     } else {
@@ -451,26 +455,6 @@ void assemble(Str input) {
   for (int i = 0; i < binary.bytes.len; i++)
     printf("%02x ", binary.bytes.data[i]);
   printf("\n");
-  return;
-}
-
-void main(int argc, char** argv) {
-  if (argc < 2) panic("Wrong usage.");
-  char* path = argv[1];
-  printf("Assembling %s.\n", path);
-
-  Bytes input = make_bytes();
-  FILE* file = fopen(path, "r");
-  if (file == NULL) panic("Couldn't open file.");
-  while (true) {
-    char c = fgetc(file);
-    if (c == EOF) break;
-    push_to_bytes(&input, c);
-  }
-  push_to_bytes(&input, 0);
-  fclose(file);
-
-  assemble(str(input.data));
 
   exit(0);
 }
