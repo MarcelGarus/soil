@@ -75,45 +75,43 @@ bool is_name(Char c) {
          c >= '0' && c <= '9' || c == '_' || c == '.';
 }
 
-typedef struct {
-  char current;
-  int line;
-} Parser;
+typedef struct { char current; int line; } Parser;
+Parser parser;
 
-Parser make_parser() {
+Parser make_parser(void) {
   Parser p;
   p.current = (char)EOF;
   p.line = 0;
   return p;
 }
-bool is_at_end(Parser* this) { return this->current == (char)EOF; }
-void advance(Parser* this) { this->current = getchar(); }
-void consume_whitespace(Parser* this) {
-  while (!is_at_end(this)) {
-    if (this->current == ' ') advance(this);
-    else if (this->current == '\n') {
-      advance(this);
-      this->line++;
-    } else if (this->current == '|') {
-      while (!is_at_end(this) && this->current != '\n') advance(this);
+bool is_at_end(void) { return parser.current == (char)EOF; }
+void advance(void) { parser.current = getchar(); }
+void consume_whitespace() {
+  while (!is_at_end()) {
+    if (parser.current == ' ') advance();
+    else if (parser.current == '\n') {
+      advance();
+      parser.line++;
+    } else if (parser.current == '|') {
+      while (!is_at_end() && parser.current != '\n') advance();
     } else
       break;
   }
 }
-bool consume_prefix(Parser* this, char prefix) {
-  consume_whitespace(this);
-  if (this->current != prefix) return false;
-  advance(this);
+bool consume_prefix(char prefix) {
+  consume_whitespace();
+  if (parser.current != prefix) return false;
+  advance();
   return true;
 }
-Str parse_name(Parser* this) {
-  consume_whitespace(this);
+Str parse_name(void) {
+  consume_whitespace();
   bool parsed_something = false;
   Bytes name = make_bytes();
-  while (!is_at_end(this) && is_name(this->current)) {
+  while (!is_at_end() && is_name(parser.current)) {
     parsed_something = true;
-    push_to_bytes(&name, this->current);
-    advance(this);
+    push_to_bytes(&name, parser.current);
+    advance();
   }
   if (!parsed_something) panic("Expected a name.");
   Str name_str;
@@ -121,31 +119,31 @@ Str parse_name(Parser* this) {
   name_str.len = name.len;
   return name_str;
 }
-Word parse_digits(Parser* this, Word radix) {
+Word parse_digits(Word radix) {
   bool parsed_something = false;
   Word num = 0;
-  while (!is_at_end(this)) {
-    Char c = this->current;
+  while (!is_at_end()) {
+    Char c = parser.current;
     if (c >= '0' && c <= '0' + min(radix, 10))
       num = num * radix + c - '0';
     else if (radix >= 10 && c >= 'a' && c <= 'a' + min(radix - 10, 26))
       num = num * radix + c - 'a';
     else if (c != '_') break;
-    advance(this);
+    advance();
     parsed_something = true;
   }
   if (!parsed_something) panic("Expected a number.");
   return num;
 }
-Word parse_num(Parser* this) {
-  consume_whitespace(this);
-  if (consume_prefix(this, 'b')) return parse_digits(this, 2);
-  if (consume_prefix(this, 'x')) return parse_digits(this, 16);
-  return parse_digits(this, 10);
+Word parse_num(void) {
+  consume_whitespace();
+  if (consume_prefix('b')) return parse_digits(2);
+  if (consume_prefix('x')) return parse_digits(16);
+  return parse_digits(10);
 }
 typedef enum { reg_ip, reg_sp, reg_st, reg_a, reg_b, reg_c, reg_d, reg_e } Reg;
-Reg parse_reg(Parser* this) {
-  Str n = parse_name(this);
+Reg parse_reg(void) {
+  Str n = parse_name();
   if (strequal(n, str("ip"))) return reg_ip;
   if (strequal(n, str("sp"))) return reg_sp;
   if (strequal(n, str("st"))) return reg_st;
@@ -156,14 +154,14 @@ Reg parse_reg(Parser* this) {
   if (strequal(n, str("e"))) return reg_e;
   panic("Expected a register.");
 }
-Str parse_str(Parser* this) {
-  if (!consume_prefix(this, '\"')) panic("Expected a string.");
+Str parse_str(void) {
+  if (!consume_prefix('\"')) panic("Expected a string.");
   Bytes str = make_bytes();
-  while (!is_at_end(this) && this->current != '"') {
-    push_to_bytes(&str, this->current);
-    advance(this);
+  while (!is_at_end() && parser.current != '"') {
+    push_to_bytes(&str, parser.current);
+    advance();
   }
-  if (!consume_prefix(this, '\"')) panic("Expected end of string.");
+  if (!consume_prefix('\"')) panic("Expected end of string.");
   Str str_str;
   str_str.bytes = str.data;
   str_str.len = str.len;
@@ -359,10 +357,10 @@ void define_label(Binary* this, Str label) {
 }
 
 void main(int argc, char** argv) {
-  printf("assembling\n");
+  printf("assembling now\n");
   Binary binary = empty_binary();
-  Parser parser = make_parser();
-  advance(&parser);
+  parser = make_parser();
+  advance();
 
   emit_str(&binary, str("soil"));
   emit_byte(&binary, 2); // num headers: devices, machine code
@@ -377,9 +375,9 @@ void main(int argc, char** argv) {
 
   Str devices[256];
   for (int i = 0; i < 256; i++) devices[i].len = 0;
-  while (consume_prefix(&parser, '@')) {
-    int index = parse_num(&parser);
-    Str name = parse_str(&parser);
+  while (consume_prefix('@')) {
+    int index = parse_num();
+    Str name = parse_str();
     devices[index] = name;
   }
   int last_device = 256;
@@ -398,12 +396,12 @@ void main(int argc, char** argv) {
 
   overwrite_word(&binary, pointer_to_machine_code_section, binary.bytes.len);
   while (true) {
-    consume_whitespace(&parser);
-    if (is_at_end(&parser)) break;
+    consume_whitespace();
+    if (is_at_end()) break;
 
-    Str name = parse_name(&parser);
+    Str name = parse_name();
 
-    bool is_label = consume_prefix(&parser, ':');
+    bool is_label = consume_prefix(':');
     if (is_label) {
       define_label(&binary, name);
     } else {
@@ -412,33 +410,33 @@ void main(int argc, char** argv) {
       #define EMIT_OP(opcode) { emit_byte(&binary, opcode); }
       #define EMIT_OP_REG(opcode) { \
         emit_byte(&binary, opcode); \
-        emit_reg(&binary, parse_reg(&parser)); }
+        emit_reg(&binary, parse_reg()); }
       #define EMIT_OP_REG_REG(opcode) { \
         emit_byte(&binary, opcode); \
-        emit_regs(&binary, parse_reg(&parser), parse_reg(&parser)); }
+        emit_regs(&binary, parse_reg(), parse_reg()); }
       #define EMIT_OP_REG_BYTE(opcode) { \
         emit_byte(&binary, opcode); \
-        emit_reg(&binary, parse_reg(&parser)); \
-        emit_byte(&binary, parse_num(&parser)); }
+        emit_reg(&binary, parse_reg()); \
+        emit_byte(&binary, parse_num()); }
       #define EMIT_OP_REG_WORD(opcode) { \
         emit_byte(&binary, opcode); \
-        emit_reg(&binary, parse_reg(&parser)); \
-        emit_word(&binary, parse_num(&parser)); }
+        emit_reg(&binary, parse_reg()); \
+        emit_word(&binary, parse_num()); }
       #define EMIT_OP_REG_LABEL(opcode) { \
         Pos base = binary.bytes.len; \
         emit_byte(&binary, opcode); \
-        emit_reg(&binary, parse_reg(&parser)); \
-        emit_label_ref(&binary, parse_name(&parser), base); }
+        emit_reg(&binary, parse_reg()); \
+        emit_label_ref(&binary, parse_name(), base); }
       #define EMIT_OP_BYTE(opcode) { \
         emit_byte(&binary, opcode); \
-        emit_byte(&binary, parse_num(&parser)); }
+        emit_byte(&binary, parse_num()); }
       #define EMIT_OP_WORD(opcode) { \
         emit_byte(&binary, opcode); \
-        emit_word(&binary, parse_num(&parser)); }
+        emit_word(&binary, parse_num()); }
       #define EMIT_OP_LABEL(opcode) { \
         Pos base = binary.bytes.len; \
         emit_byte(&binary, opcode); \
-        emit_label_ref(&binary, parse_name(&parser), base); }
+        emit_label_ref(&binary, parse_name(), base); }
 
       if (strequal(command, str("nop"))) EMIT_OP(0x00)
       else if (strequal(command, str("panic"))) EMIT_OP(0xe0)
@@ -483,7 +481,7 @@ void main(int argc, char** argv) {
     }
   }
 
-  if (!is_at_end(&parser)) panic("Didn't parse the entire input.");
+  if (!is_at_end()) panic("Didn't parse the entire input.");
   printf("Bytes: ");
   for (int i = 0; i < binary.bytes.len; i++)
     printf("%02x ", binary.bytes.data[i]);
