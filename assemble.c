@@ -75,32 +75,27 @@ bool is_name(Char c) {
          c >= '0' && c <= '9' || c == '_' || c == '.';
 }
 
-typedef struct { char current; int line; } Parser;
-Parser parser;
+// The parser.
+char current = (char)EOF;
+int line = 0;
 
-Parser make_parser(void) {
-  Parser p;
-  p.current = (char)EOF;
-  p.line = 0;
-  return p;
-}
-bool is_at_end(void) { return parser.current == (char)EOF; }
-void advance(void) { parser.current = getchar(); }
+bool is_at_end(void) { return current == (char)EOF; }
+void advance(void) { current = getchar(); }
 void consume_whitespace() {
   while (!is_at_end()) {
-    if (parser.current == ' ') advance();
-    else if (parser.current == '\n') {
+    if (current == ' ') advance();
+    else if (current == '\n') {
       advance();
-      parser.line++;
-    } else if (parser.current == '|') {
-      while (!is_at_end() && parser.current != '\n') advance();
+      line++;
+    } else if (current == '|') {
+      while (!is_at_end() && current != '\n') advance();
     } else
       break;
   }
 }
 bool consume_prefix(char prefix) {
   consume_whitespace();
-  if (parser.current != prefix) return false;
+  if (current != prefix) return false;
   advance();
   return true;
 }
@@ -108,9 +103,9 @@ Str parse_name(void) {
   consume_whitespace();
   bool parsed_something = false;
   Bytes name = make_bytes();
-  while (!is_at_end() && is_name(parser.current)) {
+  while (!is_at_end() && is_name(current)) {
     parsed_something = true;
-    push_to_bytes(&name, parser.current);
+    push_to_bytes(&name, current);
     advance();
   }
   if (!parsed_something) panic("Expected a name.");
@@ -123,7 +118,7 @@ Word parse_digits(Word radix) {
   bool parsed_something = false;
   Word num = 0;
   while (!is_at_end()) {
-    Char c = parser.current;
+    Char c = current;
     if (c >= '0' && c <= '0' + min(radix, 10))
       num = num * radix + c - '0';
     else if (radix >= 10 && c >= 'a' && c <= 'a' + min(radix - 10, 26))
@@ -157,8 +152,8 @@ Reg parse_reg(void) {
 Str parse_str(void) {
   if (!consume_prefix('\"')) panic("Expected a string.");
   Bytes str = make_bytes();
-  while (!is_at_end() && parser.current != '"') {
-    push_to_bytes(&str, parser.current);
+  while (!is_at_end() && current != '"') {
+    push_to_bytes(&str, current);
     advance();
   }
   if (!consume_prefix('\"')) panic("Expected end of string.");
@@ -257,6 +252,7 @@ typedef struct {
   Labels labels;
   Backpatches backpatches;
 } Binary;
+Binary binary;
 
 Binary empty_binary(void) {
   Binary b;
@@ -266,18 +262,18 @@ Binary empty_binary(void) {
   b.backpatches = make_backpatches();
   return b;
 }
-Str globalize_label(Str last, Str label) {
+Str globalize_label(Str label) {
   int num_dots = 0;
   while (num_dots < label.len && label.bytes[num_dots] == '.') num_dots++;
   label = substr(label, num_dots, label.len);
   if (num_dots == 0) return label;
   int shared_prefix = 0;
   while (true) {
-    if (shared_prefix >= last.len) {
+    if (shared_prefix >= binary.last_label.len) {
       if (num_dots == 1) break;
       panic("Label has too many dots at the beginning.");
     }
-    if (last.bytes[shared_prefix] == '.') {
+    if (binary.last_label.bytes[shared_prefix] == '.') {
       num_dots--;
       if (num_dots == 0) break;
     }
@@ -286,92 +282,91 @@ Str globalize_label(Str last, Str label) {
   Str global;
   global.bytes = malloc(shared_prefix + 1 + label.len);
   for (int i = 0; i < shared_prefix; i++)
-    global.bytes[i] = last.bytes[i];
+    global.bytes[i] = binary.last_label.bytes[i];
   global.bytes[shared_prefix] = '.';
   for (int i = 0; i < label.len; i++)
     global.bytes[shared_prefix + 1 + i] = label.bytes[i];
   global.len = shared_prefix + 1 + label.len;
   return global;
 }
-void emit_byte(Binary* this, Byte byte) {
-  push_to_bytes(&this->bytes, byte);
+void emit_byte(Byte byte) {
+  push_to_bytes(&binary.bytes, byte);
 }
-void emit_word(Binary* this, Word word) {
-  emit_byte(this, word & 0xff);
-  emit_byte(this, word >> 8 & 0xff);
-  emit_byte(this, word >> 16 & 0xff);
-  emit_byte(this, word >> 24 & 0xff);
-  emit_byte(this, word >> 32 & 0xff);
-  emit_byte(this, word >> 40 & 0xff);
-  emit_byte(this, word >> 48 & 0xff);
-  emit_byte(this, word >> 56 & 0xff);
+void emit_word(Word word) {
+  emit_byte(word & 0xff);
+  emit_byte(word >> 8 & 0xff);
+  emit_byte(word >> 16 & 0xff);
+  emit_byte(word >> 24 & 0xff);
+  emit_byte(word >> 32 & 0xff);
+  emit_byte(word >> 40 & 0xff);
+  emit_byte(word >> 48 & 0xff);
+  emit_byte(word >> 56 & 0xff);
 }
-void overwrite_word(Binary* this, Pos pos, Word word) {
-  this->bytes.data[pos + 0] = word & 0xff;
-  this->bytes.data[pos + 1] = word >> 8 & 0xff;
-  this->bytes.data[pos + 2] = word >> 16 & 0xff;
-  this->bytes.data[pos + 3] = word >> 24 & 0xff;
-  this->bytes.data[pos + 4] = word >> 32 & 0xff;
-  this->bytes.data[pos + 5] = word >> 40 & 0xff;
-  this->bytes.data[pos + 6] = word >> 48 & 0xff;
-  this->bytes.data[pos + 7] = word >> 56 & 0xff;
+void overwrite_word(Pos pos, Word word) {
+  binary.bytes.data[pos + 0] = word & 0xff;
+  binary.bytes.data[pos + 1] = word >> 8 & 0xff;
+  binary.bytes.data[pos + 2] = word >> 16 & 0xff;
+  binary.bytes.data[pos + 3] = word >> 24 & 0xff;
+  binary.bytes.data[pos + 4] = word >> 32 & 0xff;
+  binary.bytes.data[pos + 5] = word >> 40 & 0xff;
+  binary.bytes.data[pos + 6] = word >> 48 & 0xff;
+  binary.bytes.data[pos + 7] = word >> 56 & 0xff;
 }
-void emit_str(Binary *this, Str str) {
-  for (int i = 0; i < str.len; i++) emit_byte(this, str.bytes[i]);
+void emit_str(Str str) {
+  for (int i = 0; i < str.len; i++) emit_byte(str.bytes[i]);
 }
-void emit_reg(Binary* this, Reg reg) { emit_byte(this, to_bits(reg)); }
-void emit_regs(Binary* this, Reg first, Reg second) {
-  emit_byte(this, to_bits(first) + (to_bits(second) << 4));
+void emit_reg(Reg reg) { emit_byte(to_bits(reg)); }
+void emit_regs(Reg first, Reg second) {
+  emit_byte(to_bits(first) + (to_bits(second) << 4));
 }
-void emit_label_ref(Binary* this, Str label, int relative_to) {
-  label = globalize_label(this->last_label, label);
+void emit_label_ref(Str label, int relative_to) {
+  label = globalize_label(label);
 
-  Word pos = find_in_labels(&this->labels, label);
+  Word pos = find_in_labels(&binary.labels, label);
   if (pos == -1) {
     Backpatch b;
     b.label = label;
-    b.where = this->bytes.len;
+    b.where = binary.bytes.len;
     b.relative_to = relative_to;
-    push_to_backpatches(&this->backpatches, b);
-    emit_word(this, 0);
+    push_to_backpatches(&binary.backpatches, b);
+    emit_word(0);
   } else {
-    emit_word(this, pos - relative_to);
+    emit_word(pos - relative_to);
   }
 }
-void define_label(Binary* this, Str label) {
-  label = globalize_label(this->last_label, label);
+void define_label(Str label) {
+  label = globalize_label(label);
 
-  this->last_label = label;
-  Pos pos = this->bytes.len;
-  push_to_labels(&this->labels, label, pos);
+  binary.last_label = label;
+  Pos pos = binary.bytes.len;
+  push_to_labels(&binary.labels, label, pos);
 
   print_str(label);
   printf(": %ld\n", pos);
-  while (len_of_backpatches(&this->backpatches) > 0) {
-    Backpatch first = get_from_backpatches(&this->backpatches, 0);
+  while (len_of_backpatches(&binary.backpatches) > 0) {
+    Backpatch first = get_from_backpatches(&binary.backpatches, 0);
     if (strequal(first.label, label)) {
-      pop_from_backpatches(&this->backpatches);
-      overwrite_word(this, first.where, pos - first.relative_to);
+      pop_from_backpatches(&binary.backpatches);
+      overwrite_word(first.where, pos - first.relative_to);
     } else break;
   }
 }
 
 void main(int argc, char** argv) {
-  printf("assembling now\n");
-  Binary binary = empty_binary();
-  parser = make_parser();
+  printf("assembling\n");
+  binary = empty_binary();
   advance();
 
-  emit_str(&binary, str("soil"));
-  emit_byte(&binary, 2); // num headers: devices, machine code
+  emit_str(str("soil"));
+  emit_byte(2); // num headers: devices, machine code
 
-  emit_byte(&binary, 2); // devices
+  emit_byte(2); // devices
   Pos pointer_to_device_section = binary.bytes.len;
-  emit_word(&binary, 0);
+  emit_word(0);
 
-  emit_byte(&binary, 3); // machine code
+  emit_byte(3); // machine code
   Pos pointer_to_machine_code_section = binary.bytes.len;
-  emit_word(&binary, 0);
+  emit_word(0);
 
   Str devices[256];
   for (int i = 0; i < 256; i++) devices[i].len = 0;
@@ -385,16 +380,16 @@ void main(int argc, char** argv) {
   Pos device_hints[256];
   for (int i = 0; i < last_device; i++) {
     device_hints[i] = binary.bytes.len;
-    emit_str(&binary, devices[i]);
+    emit_str(devices[i]);
   }
-  overwrite_word(&binary, pointer_to_device_section, binary.bytes.len);
-  emit_byte(&binary, last_device);
+  overwrite_word(pointer_to_device_section, binary.bytes.len);
+  emit_byte(last_device);
   for (int i = 0; i < last_device; i++) {
-    emit_word(&binary, device_hints[i]);
-    emit_byte(&binary, devices[i].len);
+    emit_word(device_hints[i]);
+    emit_byte(devices[i].len);
   }
 
-  overwrite_word(&binary, pointer_to_machine_code_section, binary.bytes.len);
+  overwrite_word(pointer_to_machine_code_section, binary.bytes.len);
   while (true) {
     consume_whitespace();
     if (is_at_end()) break;
@@ -403,40 +398,40 @@ void main(int argc, char** argv) {
 
     bool is_label = consume_prefix(':');
     if (is_label) {
-      define_label(&binary, name);
+      define_label(name);
     } else {
       Str command = name;
 
-      #define EMIT_OP(opcode) { emit_byte(&binary, opcode); }
+      #define EMIT_OP(opcode) { emit_byte(opcode); }
       #define EMIT_OP_REG(opcode) { \
-        emit_byte(&binary, opcode); \
-        emit_reg(&binary, parse_reg()); }
+        emit_byte(opcode); \
+        emit_reg(parse_reg()); }
       #define EMIT_OP_REG_REG(opcode) { \
-        emit_byte(&binary, opcode); \
-        emit_regs(&binary, parse_reg(), parse_reg()); }
+        emit_byte(opcode); \
+        emit_regs(parse_reg(), parse_reg()); }
       #define EMIT_OP_REG_BYTE(opcode) { \
-        emit_byte(&binary, opcode); \
-        emit_reg(&binary, parse_reg()); \
-        emit_byte(&binary, parse_num()); }
+        emit_byte(opcode); \
+        emit_reg(parse_reg()); \
+        emit_byte(parse_num()); }
       #define EMIT_OP_REG_WORD(opcode) { \
-        emit_byte(&binary, opcode); \
-        emit_reg(&binary, parse_reg()); \
-        emit_word(&binary, parse_num()); }
+        emit_byte(opcode); \
+        emit_reg(parse_reg()); \
+        emit_word(parse_num()); }
       #define EMIT_OP_REG_LABEL(opcode) { \
         Pos base = binary.bytes.len; \
-        emit_byte(&binary, opcode); \
-        emit_reg(&binary, parse_reg()); \
-        emit_label_ref(&binary, parse_name(), base); }
+        emit_byte(opcode); \
+        emit_reg(parse_reg()); \
+        emit_label_ref(parse_name(), base); }
       #define EMIT_OP_BYTE(opcode) { \
-        emit_byte(&binary, opcode); \
-        emit_byte(&binary, parse_num()); }
+        emit_byte(opcode); \
+        emit_byte(parse_num()); }
       #define EMIT_OP_WORD(opcode) { \
-        emit_byte(&binary, opcode); \
-        emit_word(&binary, parse_num()); }
+        emit_byte(opcode); \
+        emit_word(parse_num()); }
       #define EMIT_OP_LABEL(opcode) { \
         Pos base = binary.bytes.len; \
-        emit_byte(&binary, opcode); \
-        emit_label_ref(&binary, parse_name(), base); }
+        emit_byte(opcode); \
+        emit_label_ref(parse_name(), base); }
 
       if (strequal(command, str("nop"))) EMIT_OP(0x00)
       else if (strequal(command, str("panic"))) EMIT_OP(0xe0)
