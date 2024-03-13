@@ -234,56 +234,41 @@ Word find_label(Str label) {
   return -1;
 }
 
+// The output.
+
+Bytes output;
+
 // Patches.
 
 typedef struct { Str label; Pos where; Pos relative_to; } Patch;
-typedef struct { Patch* items; Pos cap; Pos start; Pos end; } Patches;
+typedef struct { Patch* items; Pos cap; Pos len; } Patches;
 Patches patches;
 
 Patches init_patches(void) {
   patches.items = malloc(8 * sizeof(Patch));
   patches.cap = 8;
-  patches.start = 0;
-  patches.end = 0;
+  patches.len = 0;
   return patches;
 }
-Pos len_of_patches() {
-  return patches.end >= patches.start ? (patches.end - patches.start) : (patches.start + patches.cap - patches.end);
-}
-void reserve_patches(Pos size) {
-  if (patches.cap >= size) return;
-  Pos len = len_of_patches();
-  Patch* new_items = malloc(size * sizeof(Patch));
-  if (patches.start <= patches.end) {
-    for (Pos i = 0; i < len; i++) new_items[i] = patches.items[i];
-  } else {
-    for (Pos i = 0; i < patches.cap - patches.start; i++) new_items[i] = patches.items[patches.start + i];
-    for (Pos i = 0; i < patches.start; i++) new_items[patches.cap - patches.start + i] = patches.items[i];
+void push_patch(Patch patch) {
+  if (patches.len == patches.cap) {
+    patches.cap *= 2;
+    patches.items = realloc(patches.items, patches.cap * sizeof(LabelAndPos));
   }
-  patches.start = 0;
-  patches.end = len;
-  free(patches.items);
-  patches.items = new_items;
+  patches.items[patches.len] = patch;
+  patches.len++;
 }
-void push_to_patches(Patch patch) {
-  if (patches.cap == len_of_patches())
-    reserve_patches(len_of_patches() * 2);
-  patches.items[patches.end] = patch;
-  patches.end = (patches.end + 1) % patches.cap;
-}
-Patch pop_from_patches() {
-  if (len_of_patches() == 0) panic("Popped from empty patches.");
-  Patch patch = patches.items[patches.start];
-  patches.start = (patches.start + 1) % patches.cap;
-  return patch;
-}
-Patch get_from_patches(Pos index) {
-  return patches.items[(index + patches.start) % patches.cap];
+void overwrite_word(Pos pos, Word word);
+void fix_patches() {
+  for (int i = 0; i < patches.len; i++) {
+    Patch patch = patches.items[i];
+    Pos target = find_label(patch.label);
+    if (target == -1) panic("Label not defined.");
+    overwrite_word(patch.where, target - patch.relative_to);
+  }
 }
 
 // The output binary.
-
-Bytes output;
 
 void emit_byte(Byte byte) {
   push_to_bytes(&output, byte);
@@ -317,18 +302,12 @@ void emit_regs(Reg first, Reg second) {
 }
 void emit_label_ref(Str label, int relative_to) {
   label = globalize_label(label);
-
-  Word pos = find_label(label);
-  if (pos == -1) {
-    Patch b;
-    b.label = label;
-    b.where = output.len;
-    b.relative_to = relative_to;
-    push_to_patches(b);
-    emit_word(0);
-  } else {
-    emit_word(pos - relative_to);
-  }
+  Patch patch;
+  patch.label = label;
+  patch.where = output.len;
+  patch.relative_to = relative_to;
+  push_patch(patch);
+  emit_word(0);
 }
 void define_label(Str label) {
   label = globalize_label(label);
@@ -339,13 +318,6 @@ void define_label(Str label) {
 
   print_str(label);
   printf(": %ld\n", pos);
-  while (len_of_patches() > 0) {
-    Patch first = get_from_patches(0);
-    if (strequal(first.label, label)) {
-      pop_from_patches();
-      overwrite_word(first.where, pos - first.relative_to);
-    } else break;
-  }
 }
 
 void main(int argc, char** argv) {
@@ -476,6 +448,9 @@ void main(int argc, char** argv) {
   }
 
   if (!is_at_end()) panic("Didn't parse the entire input.");
+
+  fix_patches();
+
   printf("Bytes: ");
   for (int i = 0; i < output.len; i++)
     printf("%02x ", output.data[i]);
