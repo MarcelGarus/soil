@@ -44,7 +44,7 @@ bool strequal(Str this, Str other) {
 }
 
 void print_str(Str str) {
-  for (Pos i = 0; i < str.len; i++) printf("%c", str.bytes[i]);
+  for (Pos i = 0; i < str.len; i++) fprintf(stderr, "%c", str.bytes[i]);
 }
 
 typedef struct { Byte* data; Pos len; Pos cap; } Bytes;
@@ -76,7 +76,7 @@ char current = (char)EOF;
 int line = 0;
 
 void panic(Char* message) {
-  printf("Line %d: %s\n", line, message);
+  fprintf(stderr, "Line %d: %s\n", line, message);
   exit(1);
 }
 
@@ -133,10 +133,15 @@ Word parse_digits(Word radix) {
 }
 Word parse_num(void) {
   consume_whitespace();
-  if (consume_prefix('b')) return parse_digits(2);
-  if (consume_prefix('x')) return parse_digits(16);
+  if (consume_prefix('0')) {
+    if (is_whitespace(current)) return 0;
+    if (consume_prefix('b')) return parse_digits(2);
+    if (consume_prefix('x')) return parse_digits(16);
+    panic("Expected number radix char (b or x).");
+  }
   return parse_digits(10);
 }
+
 typedef enum { reg_ip, reg_sp, reg_st, reg_a, reg_b, reg_c, reg_d, reg_e } Reg;
 Reg parse_reg(void) {
   Str n = parse_name();
@@ -237,10 +242,11 @@ Word find_label(Str label) {
 // The output.
 
 Bytes output;
+Pos start_of_machine_code = 0; // labels are relative to this
 
 // Patches.
 
-typedef struct { Str label; Pos where; Pos relative_to; } Patch;
+typedef struct { Str label; Pos where; } Patch;
 typedef struct { Patch* items; Pos cap; Pos len; } Patches;
 Patches patches;
 
@@ -264,7 +270,7 @@ void fix_patches() {
     Patch patch = patches.items[i];
     Pos target = find_label(patch.label);
     if (target == -1) panic("Label not defined.");
-    overwrite_word(patch.where, target - patch.relative_to);
+    overwrite_word(patch.where, target);
   }
 }
 
@@ -300,12 +306,11 @@ void emit_reg(Reg reg) { emit_byte(to_bits(reg)); }
 void emit_regs(Reg first, Reg second) {
   emit_byte(to_bits(first) + (to_bits(second) << 4));
 }
-void emit_label_ref(Str label, int relative_to) {
+void emit_label_ref(Str label) {
   label = globalize_label(label);
   Patch patch;
   patch.label = label;
   patch.where = output.len;
-  patch.relative_to = relative_to;
   push_patch(patch);
   emit_word(0);
 }
@@ -313,15 +318,15 @@ void define_label(Str label) {
   label = globalize_label(label);
 
   last_label = label;
-  Pos pos = output.len;
+  Pos pos = output.len - start_of_machine_code;
   push_label(label, pos);
 
   print_str(label);
-  printf(": %ld\n", pos);
+  fprintf(stderr, ": %ld\n", pos);
 }
 
 void main(int argc, char** argv) {
-  printf("assembling\n");
+  fprintf(stderr, "assembling now\n");
   output = make_bytes();
   last_label = str("");
   init_labels();
@@ -360,7 +365,9 @@ void main(int argc, char** argv) {
     emit_byte(devices[i].len);
   }
 
-  overwrite_word(pointer_to_machine_code_section, output.len);
+  emit_word(0); // len of machine code
+  start_of_machine_code = output.len;
+  overwrite_word(pointer_to_machine_code_section, start_of_machine_code - 8);
   while (true) {
     consume_whitespace();
     if (is_at_end()) break;
@@ -387,29 +394,38 @@ void main(int argc, char** argv) {
       #define EMIT_OP_REG_WORD(opcode) { \
         emit_byte(opcode); \
         emit_reg(parse_reg()); \
-        emit_word(parse_num()); }
+        consume_whitespace(); \
+        if (is_name(current)) \
+          emit_label_ref(parse_name()); \
+        else \
+          emit_word(parse_num()); }
       #define EMIT_OP_REG_LABEL(opcode) { \
-        Pos base = output.len; \
         emit_byte(opcode); \
         emit_reg(parse_reg()); \
-        emit_label_ref(parse_name(), base); }
+        emit_label_ref(parse_name()); }
       #define EMIT_OP_BYTE(opcode) { \
         emit_byte(opcode); \
         emit_byte(parse_num()); }
       #define EMIT_OP_WORD(opcode) { \
         emit_byte(opcode); \
-        emit_word(parse_num()); }
+        consume_whitespace(); \
+        if (is_name(current)) \
+          emit_label_ref(parse_name()); \
+        else \
+          emit_word(parse_num()); }
       #define EMIT_OP_LABEL(opcode) { \
-        Pos base = output.len; \
         emit_byte(opcode); \
-        emit_label_ref(parse_name(), base); }
+        emit_label_ref(parse_name()); }
 
-      if (strequal(command, str("nop"))) EMIT_OP(0x00)
-      else if (strequal(command, str("panic"))) EMIT_OP(0xe0)
-      else if (strequal(command, str("move"))) {
-        printf("It's a move.\n");
-        EMIT_OP_REG_REG(0xd0)
+      if (strequal(command, str("str"))) {
+        Str str = parse_str();
+        for (int i = 0; i < str.len; i++) emit_byte(str.bytes[i]);
       }
+      else if (strequal(command, str("byte"))) emit_byte(parse_num());
+      else if (strequal(command, str("word"))) emit_word(parse_num());
+      else if (strequal(command, str("nop"))) EMIT_OP(0x00)
+      else if (strequal(command, str("panic"))) EMIT_OP(0xe0)
+      else if (strequal(command, str("move"))) EMIT_OP_REG_REG(0xd0)
       else if (strequal(command, str("movei"))) EMIT_OP_REG_WORD(0xd1)
       else if (strequal(command, str("moveib"))) EMIT_OP_REG_BYTE(0xd2)
       else if (strequal(command, str("load"))) EMIT_OP_REG_REG(0xd3)
@@ -438,10 +454,9 @@ void main(int argc, char** argv) {
       else if (strequal(command, str("xor"))) EMIT_OP_REG_REG(0xb2)
       else if (strequal(command, str("negate"))) EMIT_OP_REG(0xb3)
       else {
-        printf("Command is ");
+        fprintf(stderr, "Command is ");
         for (int i = 0; i < command.len; i++)
-          printf("%c", command.bytes[i]);
-        printf(" (len %ld)\n", command.len);
+          fprintf(stderr, "%c", command.bytes[i]);
         panic("Unknown command.");
       }
     }
@@ -451,10 +466,12 @@ void main(int argc, char** argv) {
 
   fix_patches();
 
-  printf("Bytes: ");
-  for (int i = 0; i < output.len; i++)
-    printf("%02x ", output.data[i]);
-  printf("\n");
+  int machine_code_len = output.len - start_of_machine_code;
+  fprintf(stderr, "machine code len is %d. saving to %ld\n", machine_code_len, start_of_machine_code - 8);
+  overwrite_word(start_of_machine_code - 8, machine_code_len);
+
+  for (int i = 0; i < output.len; i++) printf("%c", output.data[i]);
+  // printf("%02x ", output.data[i]);
 
   exit(0);
 }
