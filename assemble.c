@@ -236,49 +236,49 @@ Word find_label(Str label) {
 
 // Patches.
 
-typedef struct { Str label; Pos where; Pos relative_to; } Backpatch;
-typedef struct { Backpatch* items; Pos cap; Pos start; Pos end; } Backpatches;
-Backpatches backpatches;
+typedef struct { Str label; Pos where; Pos relative_to; } Patch;
+typedef struct { Patch* items; Pos cap; Pos start; Pos end; } Patches;
+Patches patches;
 
-Backpatches init_backpatches(void) {
-  backpatches.items = malloc(8 * sizeof(Backpatch));
-  backpatches.cap = 8;
-  backpatches.start = 0;
-  backpatches.end = 0;
-  return backpatches;
+Patches init_patches(void) {
+  patches.items = malloc(8 * sizeof(Patch));
+  patches.cap = 8;
+  patches.start = 0;
+  patches.end = 0;
+  return patches;
 }
-Pos len_of_backpatches() {
-  return backpatches.end >= backpatches.start ? (backpatches.end - backpatches.start) : (backpatches.start + backpatches.cap - backpatches.end);
+Pos len_of_patches() {
+  return patches.end >= patches.start ? (patches.end - patches.start) : (patches.start + patches.cap - patches.end);
 }
-void reserve_backpatches(Pos size) {
-  if (backpatches.cap >= size) return;
-  Pos len = len_of_backpatches();
-  Backpatch* new_items = malloc(size * sizeof(Backpatch));
-  if (backpatches.start <= backpatches.end) {
-    for (Pos i = 0; i < len; i++) new_items[i] = backpatches.items[i];
+void reserve_patches(Pos size) {
+  if (patches.cap >= size) return;
+  Pos len = len_of_patches();
+  Patch* new_items = malloc(size * sizeof(Patch));
+  if (patches.start <= patches.end) {
+    for (Pos i = 0; i < len; i++) new_items[i] = patches.items[i];
   } else {
-    for (Pos i = 0; i < backpatches.cap - backpatches.start; i++) new_items[i] = backpatches.items[backpatches.start + i];
-    for (Pos i = 0; i < backpatches.start; i++) new_items[backpatches.cap - backpatches.start + i] = backpatches.items[i];
+    for (Pos i = 0; i < patches.cap - patches.start; i++) new_items[i] = patches.items[patches.start + i];
+    for (Pos i = 0; i < patches.start; i++) new_items[patches.cap - patches.start + i] = patches.items[i];
   }
-  backpatches.start = 0;
-  backpatches.end = len;
-  free(backpatches.items);
-  backpatches.items = new_items;
+  patches.start = 0;
+  patches.end = len;
+  free(patches.items);
+  patches.items = new_items;
 }
-void push_to_backpatches(Backpatch backpatch) {
-  if (backpatches.cap == len_of_backpatches())
-    reserve_backpatches(len_of_backpatches() * 2);
-  backpatches.items[backpatches.end] = backpatch;
-  backpatches.end = (backpatches.end + 1) % backpatches.cap;
+void push_to_patches(Patch patch) {
+  if (patches.cap == len_of_patches())
+    reserve_patches(len_of_patches() * 2);
+  patches.items[patches.end] = patch;
+  patches.end = (patches.end + 1) % patches.cap;
 }
-Backpatch pop_from_backpatches() {
-  if (len_of_backpatches() == 0) panic("Popped from empty backpatches.");
-  Backpatch backpatch = backpatches.items[backpatches.start];
-  backpatches.start = (backpatches.start + 1) % backpatches.cap;
-  return backpatch;
+Patch pop_from_patches() {
+  if (len_of_patches() == 0) panic("Popped from empty patches.");
+  Patch patch = patches.items[patches.start];
+  patches.start = (patches.start + 1) % patches.cap;
+  return patch;
 }
-Backpatch get_from_backpatches(Pos index) {
-  return backpatches.items[(index + backpatches.start) % backpatches.cap];
+Patch get_from_patches(Pos index) {
+  return patches.items[(index + patches.start) % patches.cap];
 }
 
 // The output binary.
@@ -320,11 +320,11 @@ void emit_label_ref(Str label, int relative_to) {
 
   Word pos = find_label(label);
   if (pos == -1) {
-    Backpatch b;
+    Patch b;
     b.label = label;
     b.where = output.len;
     b.relative_to = relative_to;
-    push_to_backpatches(b);
+    push_to_patches(b);
     emit_word(0);
   } else {
     emit_word(pos - relative_to);
@@ -339,10 +339,10 @@ void define_label(Str label) {
 
   print_str(label);
   printf(": %ld\n", pos);
-  while (len_of_backpatches() > 0) {
-    Backpatch first = get_from_backpatches(0);
+  while (len_of_patches() > 0) {
+    Patch first = get_from_patches(0);
     if (strequal(first.label, label)) {
-      pop_from_backpatches();
+      pop_from_patches();
       overwrite_word(first.where, pos - first.relative_to);
     } else break;
   }
@@ -353,7 +353,7 @@ void main(int argc, char** argv) {
   output = make_bytes();
   last_label = str("");
   init_labels();
-  init_backpatches();
+  init_patches();
   advance();
 
   emit_str(str("soil"));
