@@ -318,6 +318,9 @@ void overwrite_word(Binary* this, Pos pos, Word word) {
   this->bytes.data[pos + 6] = word >> 48 & 0xff;
   this->bytes.data[pos + 7] = word >> 56 & 0xff;
 }
+void emit_str(Binary *this, Str str) {
+  for (int i = 0; i < str.len; i++) emit_byte(this, str.bytes[i]);
+}
 void emit_reg(Binary* this, Reg reg) { emit_byte(this, to_bits(reg)); }
 void emit_regs(Binary* this, Reg first, Reg second) {
   emit_byte(this, to_bits(first) + (to_bits(second) << 4));
@@ -356,16 +359,43 @@ void define_label(Binary* this, Str label) {
 
 void main(int argc, char** argv) {
   printf("assembling\n");
-  Str devices[256];
   Binary binary = empty_binary();
   Parser parser = make_parser();
   advance(&parser);
 
+  emit_str(&binary, str("soil"));
+  emit_byte(&binary, 2); // num headers: devices, machine code
+
+  emit_byte(&binary, 2); // devices
+  Pos pointer_to_device_section = binary.bytes.len;
+  emit_word(&binary, 0);
+
+  emit_byte(&binary, 3); // machine code
+  Pos pointer_to_machine_code_section = binary.bytes.len;
+  emit_word(&binary, 0);
+
+  Str devices[256];
+  for (int i = 0; i < 256; i++) devices[i].len = 0;
   while (consume_prefix(&parser, '@')) {
     int index = parse_num(&parser);
     Str name = parse_str(&parser);
+    devices[index] = name;
+  }
+  int last_device = 256;
+  while (last_device > 0 && devices[last_device - 1].len == 0) last_device--;
+  Pos device_hints[256];
+  for (int i = 0; i < last_device; i++) {
+    device_hints[i] = binary.bytes.len;
+    emit_str(&binary, devices[i]);
+  }
+  overwrite_word(&binary, pointer_to_device_section, binary.bytes.len);
+  emit_byte(&binary, last_device);
+  for (int i = 0; i < last_device; i++) {
+    emit_word(&binary, device_hints[i]);
+    emit_byte(&binary, devices[i].len);
   }
 
+  overwrite_word(&binary, pointer_to_machine_code_section, binary.bytes.len);
   while (true) {
     consume_whitespace(&parser);
     if (is_at_end(&parser)) break;
