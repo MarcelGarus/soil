@@ -47,11 +47,6 @@ void print_str(Str str) {
   for (Pos i = 0; i < str.len; i++) printf("%c", str.bytes[i]);
 }
 
-void panic(Char* message) {
-  printf("%s\n", message);
-  exit(1);
-}
-
 typedef struct { Byte* data; Pos len; Pos cap; } Bytes;
 Bytes make_bytes(void) {
   Bytes vec;
@@ -79,6 +74,11 @@ bool is_name(Char c) {
 
 char current = (char)EOF;
 int line = 0;
+
+void panic(Char* message) {
+  printf("Line %d: %s\n", line, message);
+  exit(1);
+}
 
 bool is_at_end(void) { return current == (char)EOF; }
 void advance(void) { current = getchar(); }
