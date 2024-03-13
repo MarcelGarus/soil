@@ -19,8 +19,11 @@ Soil binaries contain the following information:
 Upon startup, Soil does the following:
 
 1. Wire up the devices.
-2. Load the machine code at position 0 into memory.
-3. Set initial register contents (all zero except the stack pointer `sp`, which points to the last memory address).
+2. Load the machine code into memory.
+3. Set initial register contents.
+   1. the instruction pointer `ip` to the address of the machine code
+   2. the stack pointer `sp` to the last memory address
+   3. all other registers to zero
 4. Start running.
 
 ## Registers
@@ -88,16 +91,17 @@ The following instructions are available:
 - `storeb <to:reg> <from:reg>`: Interprets the content of the `to` register as an address and moves the lower 8 bits of the `from` register to that address.
 - `push <reg:reg>`: Sugar for `sub sp 8`, `store sp reg`.
 - `pop <reg:reg>`: Sugar for `load reg sp`, `add sp 8`.
-- `jump <by:byte>`: Adds `by` to `ip`. Jumps are relative to the address after this instruction.
-- `jumpw <by:word>`: Adds `by` to `ip`. Jumps are relative to the address after this instruction.
-- `cjump <by:byte>`: Adds `by` to `ip` if `st` is not `0`. Jumps are relative to the address after this instruction.
+- `jump <by:byte>`: Adds `by` to `ip`. Jumps are relative to the start of this instruction.
+- `cjump <by:byte>`: Adds `by` to `ip` if `st` is not `0`. Jumps are relative to the start of this instruction.
 - `call <target:word>`: Sugar for `push ip`, `movei target ip`.
 - `ret`: Sugar for `load ip sp`, `addi sp 8` as if executed as a single instruction.
-- `syscall <device:byte>`: Makes the device handle the syscall. It can access all the memory and registers.
+- `devicecall <device:byte>`: Makes the device handle the devicecall. It can access all the memory and registers.
 - `cmp <left:reg> <right:reg>`: Saves `left` - `right` in `st`.
 - `iszero`: If `st` is `0`, sets `st` to `1`, otherwise to `0`.
 - `isless`: If `st` is less than `0`, sets `st` to `1`, otherwise to `0`.
 - `isgreater`: If `st` is greater than `0`, sets `st` to `1`, otherwise to `0`.
+- `islessequal`: If `st` is less than or equal `0`, sets `st` to `1`, otherwise to `0`.
+- `isgreaterequal`: If `st` is greater than or equal `0`, sets `st` to `1`, otherwise to `0`.
 - `add <to:reg> <from:reg>`: Adds `from` to `to`.
 - `sub <to:reg> <from:reg>`: Subtracts `from` from `to`.
 - `mul <to:reg> <from:reg>`: Multiplies `to` and `from`. Saves the result in `to`.

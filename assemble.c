@@ -209,7 +209,7 @@ Word find_in_labels(Labels* labels, Str label) {
   return -1;
 }
 
-typedef struct { Str label; Pos where; } Backpatch;
+typedef struct { Str label; Pos where; Pos relative_to; } Backpatch;
 typedef struct { Backpatch* items; Pos cap; Pos start; Pos end; } Backpatches;
 Backpatches make_backpatches(void) {
   Backpatches backpatches;
@@ -325,7 +325,7 @@ void emit_reg(Binary* this, Reg reg) { emit_byte(this, to_bits(reg)); }
 void emit_regs(Binary* this, Reg first, Reg second) {
   emit_byte(this, to_bits(first) + (to_bits(second) << 4));
 }
-void emit_label_ref(Binary* this, Str label) {
+void emit_label_ref(Binary* this, Str label, int relative_to) {
   label = globalize_label(this->last_label, label);
 
   Word pos = find_in_labels(&this->labels, label);
@@ -333,10 +333,11 @@ void emit_label_ref(Binary* this, Str label) {
     Backpatch b;
     b.label = label;
     b.where = this->bytes.len;
+    b.relative_to = relative_to;
     push_to_backpatches(&this->backpatches, b);
     emit_word(this, 0);
   } else {
-    emit_word(this, pos);
+    emit_word(this, pos - relative_to);
   }
 }
 void define_label(Binary* this, Str label) {
@@ -352,7 +353,7 @@ void define_label(Binary* this, Str label) {
     Backpatch first = get_from_backpatches(&this->backpatches, 0);
     if (strequal(first.label, label)) {
       pop_from_backpatches(&this->backpatches);
-      overwrite_word(this, first.where, pos);
+      overwrite_word(this, first.where, pos - first.relative_to);
     } else break;
   }
 }
@@ -424,9 +425,10 @@ void main(int argc, char** argv) {
         emit_reg(&binary, parse_reg(&parser)); \
         emit_word(&binary, parse_num(&parser)); }
       #define EMIT_OP_REG_LABEL(opcode) { \
+        Pos base = binary.bytes.len; \
         emit_byte(&binary, opcode); \
         emit_reg(&binary, parse_reg(&parser)); \
-        emit_label_ref(&binary, parse_name(&parser)); }
+        emit_label_ref(&binary, parse_name(&parser), base); }
       #define EMIT_OP_BYTE(opcode) { \
         emit_byte(&binary, opcode); \
         emit_byte(&binary, parse_num(&parser)); }
@@ -434,8 +436,9 @@ void main(int argc, char** argv) {
         emit_byte(&binary, opcode); \
         emit_word(&binary, parse_num(&parser)); }
       #define EMIT_OP_LABEL(opcode) { \
+        Pos base = binary.bytes.len; \
         emit_byte(&binary, opcode); \
-        emit_label_ref(&binary, parse_name(&parser)); }
+        emit_label_ref(&binary, parse_name(&parser), base); }
 
       if (strequal(command, str("nop"))) EMIT_OP(0x00)
       else if (strequal(command, str("panic"))) EMIT_OP(0xe0)
