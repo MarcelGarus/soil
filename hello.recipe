@@ -8,6 +8,4 @@ movei b 14
 devicecall 1
 devicecall 0
 
-msg:
-  str "Hello, world!"
-  byte 10
+msg: str "Hello, world!" byte 10

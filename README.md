@@ -121,7 +121,7 @@ The anatomy of a recipe file:
 - the only thing following are sections
   - type (1 byte)
   - length (8 byte), useful for skipping sections
-  - content (of the length above)
+  - content (length parsed above)
 - name
   - section type `0`
   - length (8 bytes)
@@ -135,8 +135,9 @@ The anatomy of a recipe file:
   - length (8 bytes)
   - number of devices (1 byte)
   - for each device (sockets assigned sequentially)
-    - pointer to description what device should be (8 bytes)
-    - length of that description (1 byte)
+    - length of the hint (1 byte)
+    - hint (length parsed above)
 - machine code
   - section type `3`
   - length (8 bytes)
+  - machine code (length parsed above)
