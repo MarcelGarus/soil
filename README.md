@@ -118,21 +118,25 @@ Recipe files end with `.recipe` and can be compiled into Soil binaries.
 The anatomy of a recipe file:
 
 - magic bytes `soil` (4 bytes)
-- headers
-  - number of headers (1 byte)
-  - for each header entry
-    - type (1 byte)
-    - pointer (8 bytes)
+- the only thing following are sections
+  - type (1 byte)
+  - length (8 byte), useful for skipping sections
+  - content (of the length above)
 - name
+  - section type `0`
   - length (8 bytes)
   - bytes
 - description
+  - section type `1`
   - length (8 bytes)
   - bytes
 - devices
+  - section type `2`
+  - length (8 bytes)
   - number of devices (1 byte)
   - for each device (sockets assigned sequentially)
     - pointer to description what device should be (8 bytes)
     - length of that description (1 byte)
 - machine code
+  - section type `3`
   - length (8 bytes)

@@ -65,6 +65,7 @@ void push_to_bytes(Bytes* vec, Byte byte) {
 }
 
 bool is_whitespace(Char c) { return c == ' ' || c == '\n'; }
+bool is_num(Char c) { return c >= '0' && c <= '9'; }
 bool is_name(Char c) {
   return c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' ||
          c >= '0' && c <= '9' || c == '_' || c == '.';
@@ -269,7 +270,12 @@ void fix_patches() {
   for (int i = 0; i < patches.len; i++) {
     Patch patch = patches.items[i];
     Pos target = find_label(patch.label);
-    if (target == -1) panic("Label not defined.");
+    if (target == -1) {
+      fprintf(stderr, "Patching label \"");
+      print_str(patch.label);
+      fprintf(stderr, "\".\n");
+      panic("Label not defined.");
+    }
     overwrite_word(patch.where, target);
   }
 }
@@ -334,14 +340,10 @@ void main(int argc, char** argv) {
   advance();
 
   emit_str(str("soil"));
-  emit_byte(2); // num headers: devices, machine code
 
-  emit_byte(2); // devices
-  Pos pointer_to_device_section = output.len;
-  emit_word(0);
-
-  emit_byte(3); // machine code
-  Pos pointer_to_machine_code_section = output.len;
+  // Device section
+  emit_byte(2); // type: devices
+  Pos pointer_to_device_section_len = output.len;
   emit_word(0);
 
   Str devices[256];
@@ -351,23 +353,26 @@ void main(int argc, char** argv) {
     Str name = parse_str();
     devices[index] = name;
   }
-  int last_device = 256;
-  while (last_device > 0 && devices[last_device - 1].len == 0) last_device--;
+  int num_devices = 256;
+  while (num_devices > 0 && devices[num_devices - 1].len == 0) num_devices--;
+  emit_byte(num_devices); // num devices
   Pos device_hints[256];
-  for (int i = 0; i < last_device; i++) {
+  for (int i = 0; i < num_devices; i++) {
     device_hints[i] = output.len;
+    emit_byte(devices[i].len);
     emit_str(devices[i]);
   }
-  overwrite_word(pointer_to_device_section, output.len);
-  emit_byte(last_device);
-  for (int i = 0; i < last_device; i++) {
-    emit_word(device_hints[i]);
-    emit_byte(devices[i].len);
-  }
+  overwrite_word(
+    pointer_to_device_section_len,
+    output.len - pointer_to_device_section_len - 8
+  );
 
+  // Machine code section
+  emit_byte(3);  // type: machine code
+  Pos pointer_to_machine_code_section_len = output.len;
   emit_word(0); // len of machine code
+
   start_of_machine_code = output.len;
-  overwrite_word(pointer_to_machine_code_section, start_of_machine_code - 8);
   while (true) {
     consume_whitespace();
     if (is_at_end()) break;
@@ -395,10 +400,10 @@ void main(int argc, char** argv) {
         emit_byte(opcode); \
         emit_reg(parse_reg()); \
         consume_whitespace(); \
-        if (is_name(current)) \
-          emit_label_ref(parse_name()); \
+        if (is_num(current)) \
+          emit_word(parse_num()); \
         else \
-          emit_word(parse_num()); }
+          emit_label_ref(parse_name()); }
       #define EMIT_OP_REG_LABEL(opcode) { \
         emit_byte(opcode); \
         emit_reg(parse_reg()); \
@@ -409,10 +414,10 @@ void main(int argc, char** argv) {
       #define EMIT_OP_WORD(opcode) { \
         emit_byte(opcode); \
         consume_whitespace(); \
-        if (is_name(current)) \
-          emit_label_ref(parse_name()); \
+        if (is_num(current)) \
+          emit_word(parse_num()); \
         else \
-          emit_word(parse_num()); }
+          emit_label_ref(parse_name()); }
       #define EMIT_OP_LABEL(opcode) { \
         emit_byte(opcode); \
         emit_label_ref(parse_name()); }
@@ -467,8 +472,7 @@ void main(int argc, char** argv) {
   fix_patches();
 
   int machine_code_len = output.len - start_of_machine_code;
-  fprintf(stderr, "machine code len is %d. saving to %ld\n", machine_code_len, start_of_machine_code - 8);
-  overwrite_word(start_of_machine_code - 8, machine_code_len);
+  overwrite_word(pointer_to_machine_code_section_len, machine_code_len);
 
   for (int i = 0; i < output.len; i++) printf("%c", output.data[i]);
   // printf("%02x ", output.data[i]);
