@@ -11,7 +11,7 @@ void panic(int exit_code, char* msg) {
 typedef uint8_t Byte;
 typedef uint64_t Word;
 
-Word reg[16]; // ip, sp, st, a, b, c, d, e
+Word reg[8]; // ip, sp, st, a, b, c, d, e
 #define IP reg[0]
 #define SP reg[1]
 #define ST reg[2]

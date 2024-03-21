@@ -61,7 +61,7 @@ The following instructions are available:
 |     d7 | push           | reg: reg      | -            |
 |     d8 | pop            | reg: reg      | -            |
 |     f0 | jump           | to: word      | -            |
-|     f1 | cjump          | cond: reg     | to: word     |
+|     f1 | cjump          | to: word      | -            |
 |     f2 | call           | target: word  | -            |
 |     f3 | ret            | -             | -            |
 |     f4 | devicecall     | device: byte  | -            |

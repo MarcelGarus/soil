@@ -21,7 +21,6 @@ print:
 ; < rdx: length of message
 panic:
   call print
-  hlt
   mov rax, 60
   mov rdi, 1
   syscall
@@ -121,36 +120,36 @@ malloc:
 ; - rsi: source
 ; - rax, rbx, rcx, rdx: general purpose, depends on instruction
 
-run:
-  ; Because registers are not first-class in assembly, references to registers
-  ; can't be passed around. That's why it takes some effort to move values in
-  ; and out of registers (called load and store, not to be confused with loading
-  ; and storing bytes from/to memory).
-  macro mov_if_reg_is dest, source, reg, constant {
-    cmp reg, constant
-    cmove dest, source
-  }
-  macro load_reg dest, reg {
-    mov_if_reg_is dest, r8,  reg, 0000b ; ip
-    mov_if_reg_is dest, r9,  reg, 0001b ; sp
-    mov_if_reg_is dest, r10, reg, 0010b ; st
-    mov_if_reg_is dest, r11, reg, 0011b ; a
-    mov_if_reg_is dest, r12, reg, 0100b ; b
-    mov_if_reg_is dest, r13, reg, 0101b ; c
-    mov_if_reg_is dest, r14, reg, 0110b ; d
-    mov_if_reg_is dest, r15, reg, 0111b ; e
-  }
-  macro store_reg reg, dest {
-    mov_if_reg_is r8,  dest, reg, 0000b ; ip
-    mov_if_reg_is r9,  dest, reg, 0001b ; sp
-    mov_if_reg_is r10, dest, reg, 0010b ; st
-    mov_if_reg_is r11, dest, reg, 0011b ; a
-    mov_if_reg_is r12, dest, reg, 0100b ; b
-    mov_if_reg_is r13, dest, reg, 0101b ; c
-    mov_if_reg_is r14, dest, reg, 0110b ; d
-    mov_if_reg_is r15, dest, reg, 0111b ; e
-  }
+; Because registers are not first-class in assembly, references to registers
+; can't be passed around. That's why it takes some effort to move values in
+; and out of registers (called load and store, not to be confused with loading
+; and storing bytes from/to memory).
+macro mov_if_reg_is dest, source, reg, constant {
+  cmp reg, constant
+  cmove dest, source
+}
+macro load_reg dest, reg {
+  mov_if_reg_is dest, r8,  reg, 0000b ; ip
+  mov_if_reg_is dest, r9,  reg, 0001b ; sp
+  mov_if_reg_is dest, r10, reg, 0010b ; st
+  mov_if_reg_is dest, r11, reg, 0011b ; a
+  mov_if_reg_is dest, r12, reg, 0100b ; b
+  mov_if_reg_is dest, r13, reg, 0101b ; c
+  mov_if_reg_is dest, r14, reg, 0110b ; d
+  mov_if_reg_is dest, r15, reg, 0111b ; e
+}
+macro store_reg reg, dest {
+  mov_if_reg_is r8,  dest, reg, 0000b ; ip
+  mov_if_reg_is r9,  dest, reg, 0001b ; sp
+  mov_if_reg_is r10, dest, reg, 0010b ; st
+  mov_if_reg_is r11, dest, reg, 0011b ; a
+  mov_if_reg_is r12, dest, reg, 0100b ; b
+  mov_if_reg_is r13, dest, reg, 0101b ; c
+  mov_if_reg_is r14, dest, reg, 0110b ; d
+  mov_if_reg_is r15, dest, reg, 0111b ; e
+}
 
+run:
   mov rsp, r8 ; ip
   add rsp, rbp
   ; Fetch the instruction's opcode and jump to the handler.
@@ -455,7 +454,9 @@ init_vm_from_binary:
   mov [memory], rax
 
   ; Parse the binary.
-  mov r8, [binary] ; cursor
+  mov r8, [binary] ; cursor through the binary
+  mov r9, [binary.len] ; pointer to the end of the binary
+  add r9, r8
 
   macro eat_byte reg {
     mov reg, [r8]
@@ -480,9 +481,12 @@ init_vm_from_binary:
 .magic_bytes_mismatch:
   panic str_magic_bytes_mismatch, str_magic_bytes_mismatch.len
 
+; While parsing sections, we keep the following registers intact:
+; - r8: The cursor through the binary.
+; - r9: The end of the binary.
 .parse_section:
-  cmp r8, [binary.len]
-  je .done_with_parsing_sections
+  cmp r8, r9
+  jge .done_with_parsing_sections
   eat_byte r10b ; type
   eat_word r11 ; length
   ; type: machine code
@@ -494,18 +498,18 @@ init_vm_from_binary:
 
 .parse_machine_code:
   ; copy code into memory
-  mov r10, malloc ; cursor through the binary
-  mov r12, r10    ; end of the cursor through the binary
-  add r12, r11
-  mov r13, [memory] ; cursor through the memory
-  ; r10 is the cursor, r12 the end
+  mov r10, r8 ; end of the machine code
+  add r10, r11
+  ; TODO: assert that machine code fits into memory
+  mov r12, [memory] ; cursor through the memory
+  ; r8 is the cursor, r10 the end
 .copy_machine_code_loop:
-  cmp r10, r12
+  cmp r8, r10
   je .parse_section
-  mov r14b, [r10]
-  mov [r13], r14b
-  inc r10
-  inc r13
+  mov r14b, [r8]
+  mov [r12], r14b
+  inc r8
+  inc r12
   jmp .copy_machine_code_loop
 
 .done_with_parsing_sections:
@@ -619,4 +623,5 @@ memory:
   dq 8
 
 devices:
+  dq 0
   ; void (*devices[256])();
