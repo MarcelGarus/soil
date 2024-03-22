@@ -322,7 +322,13 @@ run:
   mov r8, [rax]
   add r9, 8
   end_of_instruction
-.devicecall: todo
+.devicecall:
+  mov rax, 0
+  mov al, [rsp + 1]
+  mov rax, [devices + rax * 8]
+  call rax
+  advance_ip_by 2
+  end_of_instruction
 .cmp:
   extract_regs_into_rdi_rsi
   load_reg rax, rdi
@@ -513,10 +519,6 @@ init_vm_from_binary:
   jmp .copy_machine_code_loop
 
 .done_with_parsing_sections:
-  mov rsi, str_foo
-  mov rdx, str_foo.len
-  call print
-
   mov r8, 0 ; ip
   mov r9, 1023 ; sp
   mov r10, 0
@@ -598,6 +600,19 @@ main:
   mov rdi, 0
   syscall
 
+device_exit:
+  mov rax, 60 ; exit syscall
+  mov rdi, [rbp + r11] ; status code (from the a register)
+  syscall
+
+device_stdout:
+  mov rax, 1 ; write syscall
+  mov rdi, 1 ; stdout
+  lea rsi, [rbp + r11] ; pointer to string (from the a register)
+  mov rdx, r12 ; length of the string (from the b register)
+  syscall
+  ret
+
 segment readable writable
 
 my_heap:
@@ -623,5 +638,7 @@ memory:
   dq 8
 
 devices:
-  dq 0
+  dq device_exit
+  dq device_stdout
+  dq 254 dup 0
   ; void (*devices[256])();
