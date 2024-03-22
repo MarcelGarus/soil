@@ -1,5 +1,7 @@
 # Soil
 
+![Soil](Soil.png)
+
 Soil is a bytecode interpreter.
 It can run Soil binaries, which are files that end with `.soil`.
 
