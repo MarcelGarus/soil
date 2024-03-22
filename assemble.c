@@ -326,13 +326,9 @@ void define_label(Str label) {
   last_label = label;
   Pos pos = output.len - start_of_machine_code;
   push_label(label, pos);
-
-  print_str(label);
-  fprintf(stderr, ": %ld\n", pos);
 }
 
 void main(int argc, char** argv) {
-  fprintf(stderr, "assembling now\n");
   output = make_bytes();
   last_label = str("");
   init_labels();
