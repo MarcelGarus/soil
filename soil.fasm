@@ -281,7 +281,8 @@ run:
   mov rbx, [.jump_table + rax * 8]
   jmp rbx
 .jump_table:
-  ; This macro generates (to - from) pointers to .invalid. Bounds are inclusive.
+  ; This macro generates (to - from + 1) pointers to .invalid. Bounds are
+  ; inclusive.
   macro invalid_opcodes from, to {
     opcode = from
     while opcode <= to
