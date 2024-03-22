@@ -6,6 +6,11 @@ segment readable executable
 
 jmp main
 
+; Syntax notes for function definitions:
+; < inputs
+; > outputs
+; ~ clobbered, e.g. registers that may be overwritten
+
 ; Prints something.
 ; > rsi: pointer to string
 ; > rdx: length of string
@@ -33,6 +38,15 @@ macro panic msg, len {
 macro todo {
   panic str_todo, str_todo.len
 }
+
+; Memory allocation
+; =================
+;
+; Sadly, other parts of the VM need dynamic memory allocation. For example, we
+; don't know how big the binary will be that is given to us on stdin. To deal
+; with that, we first implement a generic memory bump allocator. It never frees
+; memory, but that's okay because we only allocate memory for the binary and the
+; VM's memory.
 
 ; Initializes the heap.
 ; ~ rax, rdi
@@ -95,6 +109,115 @@ malloc:
 .error:
   mov rax, 0
   ret
+
+; Loading the binary
+; ==================
+;
+; The binary comes on stdin. Here, we make the pointer at the `binary` label
+; point to a memory region where the binary has been loaded into memory.
+
+load_binary:
+  mov r8, 1024
+  mov r9, 1
+  call malloc
+  mov [binary], rax
+  mov qword [binary.cap], 1024
+.read_bytes:
+  mov rax, 0
+  mov rdi, 0
+  mov rsi, [binary]
+  mov rdx, [binary.cap]
+  syscall
+  mov [binary.len], rax
+  ret
+
+
+; Parsing the binary
+; ==================
+;
+; .soil files don't just contain the machine code. They also contain other stuff
+; such as which devices are expected to be connected where. Here, we implement
+; a parser that parses a binary and sets up the VM state (registers and memory).
+;
+; While parsing sections, we always keep the following information in registers:
+; - r8: The cursor through the binary.
+; - r9: The end of the binary.
+
+init_vm_from_binary:
+  ; Allocate memory for the VM.
+  mov r8, 1024
+  mov r9, 8
+  call malloc
+  mov [memory], rax
+
+  ; Parse the binary.
+  mov r8, [binary] ; cursor through the binary
+  mov r9, [binary.len] ; pointer to the end of the binary
+  add r9, r8
+
+  macro eat_byte reg {
+    mov reg, [r8]
+    inc r8
+  }
+  macro eat_word reg {
+    mov reg, [r8]
+    add r8, 8
+  }
+  macro eat_magic_byte expected {
+    eat_byte al
+    cmp al, expected
+    jne .magic_bytes_mismatch
+  }
+
+  eat_magic_byte 's'
+  eat_magic_byte 'o'
+  eat_magic_byte 'i'
+  eat_magic_byte 'l'
+  jmp .parse_section
+
+.magic_bytes_mismatch:
+  panic str_magic_bytes_mismatch, str_magic_bytes_mismatch.len
+
+.parse_section:
+  cmp r8, r9
+  jge .done_with_parsing_sections
+  eat_byte r10b ; type
+  eat_word r11 ; length
+  ; type: machine code
+  cmp r10b, 3
+  je .parse_machine_code
+  ; type: unknown
+  add r8, r11 ; skip section
+  jmp .parse_section
+
+.parse_machine_code:
+  ; copy code into memory
+  mov r10, r8 ; end of the machine code
+  add r10, r11
+  ; TODO: assert that machine code fits into memory
+  mov r12, [memory] ; cursor through the memory
+  ; r8 is the cursor, r10 the end
+.copy_machine_code_loop:
+  cmp r8, r10
+  je .parse_section
+  mov r14b, [r8]
+  mov [r12], r14b
+  inc r8
+  inc r12
+  jmp .copy_machine_code_loop
+
+.done_with_parsing_sections:
+  mov r8, 0 ; ip
+  mov r9, 1023 ; sp
+  mov r10, 0
+  mov r11, 0
+  mov r12, 0
+  mov r13, 0
+  mov r14, 0
+  mov r15, 0
+  mov rbp, [memory]
+  ret
+
 
 ; Running the VM
 ; ==============
@@ -437,159 +560,8 @@ run:
   advance_ip_by 2
   end_of_instruction
 
-load_binary:
-  mov r8, 1024
-  mov r9, 1
-  call malloc
-  mov [binary], rax
-  mov qword [binary.cap], 1024
-.read_bytes:
-  mov rax, 0
-  mov rdi, 0
-  mov rsi, [binary]
-  mov rdx, [binary.cap]
-  syscall
-  mov [binary.len], rax
-  ret
-
-init_vm_from_binary:
-  ; Allocate memory for the VM.
-  mov r8, 1024
-  mov r9, 8
-  call malloc
-  mov [memory], rax
-
-  ; Parse the binary.
-  mov r8, [binary] ; cursor through the binary
-  mov r9, [binary.len] ; pointer to the end of the binary
-  add r9, r8
-
-  macro eat_byte reg {
-    mov reg, [r8]
-    inc r8
-  }
-  macro eat_word reg {
-    mov reg, [r8]
-    add r8, 8
-  }
-  macro eat_magic_byte expected {
-    eat_byte al
-    cmp al, expected
-    jne .magic_bytes_mismatch
-  }
-
-  eat_magic_byte 's'
-  eat_magic_byte 'o'
-  eat_magic_byte 'i'
-  eat_magic_byte 'l'
-  jmp .parse_section
-
-.magic_bytes_mismatch:
-  panic str_magic_bytes_mismatch, str_magic_bytes_mismatch.len
-
-; While parsing sections, we keep the following registers intact:
-; - r8: The cursor through the binary.
-; - r9: The end of the binary.
-.parse_section:
-  cmp r8, r9
-  jge .done_with_parsing_sections
-  eat_byte r10b ; type
-  eat_word r11 ; length
-  ; type: machine code
-  cmp r10b, 3
-  je .parse_machine_code
-  ; type: unknown
-  add r8, r11 ; skip section
-  jmp .parse_section
-
-.parse_machine_code:
-  ; copy code into memory
-  mov r10, r8 ; end of the machine code
-  add r10, r11
-  ; TODO: assert that machine code fits into memory
-  mov r12, [memory] ; cursor through the memory
-  ; r8 is the cursor, r10 the end
-.copy_machine_code_loop:
-  cmp r8, r10
-  je .parse_section
-  mov r14b, [r8]
-  mov [r12], r14b
-  inc r8
-  inc r12
-  jmp .copy_machine_code_loop
-
-.done_with_parsing_sections:
-  mov r8, 0 ; ip
-  mov r9, 1023 ; sp
-  mov r10, 0
-  mov r11, 0
-  mov r12, 0
-  mov r13, 0
-  mov r14, 0
-  mov r15, 0
-  mov rbp, [memory]
-  ret
-
-; void init_vm(Byte* bin, int len) {
-;   for (int i = 0; i < 8; i++) reg[i] = 0;
-;   mem = malloc(1000);
-
-;   if (bin[0] != 's' || bin[1] != 'o' || bin[2] != 'i' || bin[3] != 'l')
-;     panic(1, "Magic bytes don't match.");
-;   int num_headers = bin[4];
-;   printf("num devices %d\n", num_headers);
-;   int cursor = 5;
-;   for (int i = 0; i < num_headers; i++) {
-;     int type = bin[cursor];
-;     int pointer = read_word(bin, cursor + 1);
-;     cursor += 9;
-;     if (type == 2) {
-;       // devices
-;       int num_devices = bin[cursor];
-;     }
-;     if (type == 3) {
-;       // machine code
-;       int len = read_word(bin, pointer);
-;       int machine_code_start = pointer + 8;
-;       printf("machine code is at %x\n", machine_code_start);
-;       for (int j = 0; j < len; j++) mem[j] = bin[machine_code_start + j];
-;     }
-;   }
-; }
-
-; void devicecall(int device) {
-;   panic(1, "TODO: devicecall\n");
-; }
-
-; int main(int argc, char** argv) {
-;   size_t cap = 8;
-;   size_t len = 0;
-;   char *bin = (char*) malloc(8);
-;   if (bin == NULL) panic(2, "Out of memory.");
-;   char ch;
-;   do {
-;     ch = fgetc(stdin);
-;     if (len == cap) {
-;       cap *= 2;
-;       bin = realloc(bin, cap);
-;       if (bin == NULL) panic(2, "Out of memory.");
-;     }
-;     bin[len] = ch;
-;     len++;
-;   } while (ch != EOF);
-
-;   init_vm(bin, len);
-;   run();
-; }
-
-machine_code:
-  db 0d2h, 00000011b, 0  ; moveib a 0
-  db 0d2h, 00000100b, 1  ; moveib b 1
-  db 0d2h, 00000101b, 0  ; moveib c 0
-  db 0d0h, 01000101b     ; move c b
-  db 0a0h, 00110100b     ; add b a
-  db 0d0h, 01010011b     ; move a c
-  db 0f0h, -6            ; jumpb -6
+; Main function
+; =============
 
 main:
   call init_heap
@@ -599,6 +571,9 @@ main:
   mov rax, 60
   mov rdi, 0
   syscall
+
+; Devices
+; =======
 
 device_exit:
   mov rax, 60 ; exit syscall
@@ -641,4 +616,3 @@ devices:
   dq device_exit
   dq device_stdout
   dq 254 dup 0
-  ; void (*devices[256])();
