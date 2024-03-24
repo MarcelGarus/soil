@@ -1,11 +1,8 @@
 | A program that outputs hello world.
 
-@0 "exit"
-@1 "stdout"
-
 movei a msg
 movei b 14
-devicecall 1
-devicecall 0
+syscall 1 | print
+syscall 0 | exit
 
 msg: str "Hello, world!" byte 10

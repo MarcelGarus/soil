@@ -1,32 +1,29 @@
 # Soil
 
-![Soil](Soil.png)
-
 Soil is a bytecode interpreter.
 It can run Soil binaries, which are files that end with `.soil`.
 
 Soil is designed to be easy to implement on typical machines.
 It has 8 registers and memory.
-Side effects happen through *devices* connected to the Soil instance.
 
-TODO: Graphic of the architecture
+![Soil](Soil.png)
 
 ## Binaries
 
-Soil binaries contain the following information:
-
-- which devices are expected to be available
-- the machine code
+Soil binaries contain the machine code.
+They can also contain a description of the program and debug information.
 
 Upon startup, Soil does the following:
 
-1. Wire up the devices.
-2. Load the machine code into memory.
-3. Set initial register contents.
-   1. the instruction pointer `ip` to the address of the machine code
+1. Load the machine code into memory at address 0
+2. Set initial register contents
+   1. the instruction pointer `ip` to 0, the address of the machine code
    2. the stack pointer `sp` to the last memory address
    3. all other registers to zero
-4. Start running.
+3. Run the code
+   1. Parse the instruction that `ip` points to
+   2. Run it
+   3. Repeat
 
 ## Registers
 
@@ -49,68 +46,38 @@ Machine code consists of a sequence of instructions.
 All instructions start with a byte containing the opcode, followed by the arguments to the operation.
 The following instructions are available:
 
-| opcode | mnemonic       | arg 0         | arg 1        |
-| ------ | -------------- | ------------- | ------------ |
-|     00 | nop            | -             | -            |
-|     e0 | panic          | -             | -            |
-|     d0 | move           | to: reg       | from: reg    |
-|     d1 | movei          | to: reg       | value: word  |
-|     d2 | moveib         | to: reg       | value: byte  |
-|     d3 | load           | to: reg       | from: reg    |
-|     d4 | loadb          | to: reg       | from: reg    |
-|     d5 | store          | to: reg       | from: reg    |
-|     d6 | storeb         | to: reg       | from: reg    |
-|     d7 | push           | reg: reg      | -            |
-|     d8 | pop            | reg: reg      | -            |
-|     f0 | jump           | to: word      | -            |
-|     f1 | cjump          | to: word      | -            |
-|     f2 | call           | target: word  | -            |
-|     f3 | ret            | -             | -            |
-|     f4 | devicecall     | device: byte  | -            |
-|     c0 | cmp            | left: reg     | right: reg   |
-|     c1 | isequal        | -             | -            |
-|     c2 | isless         | -             | -            |
-|     c3 | isgreater      | -             | -            |
-|     c4 | islessequal    | -             | -            |
-|     c5 | isgreaterequal | -             | -            |
-|     a0 | add            | to: reg       | from: reg    |
-|     a1 | sub            | to: reg       | from: reg    |
-|     a2 | mul            | to: reg       | from: reg    |
-|     a3 | div            | dividend: reg | divisor: reg |
-|     b0 | and            | to: reg       | from: reg    |
-|     b1 | or             | to: reg       | from: reg    |
-|     b2 | xor            | to: reg       | from: reg    |
-|     b3 | negate         | to: reg       | -            |
-
-- `nop`: Does nothing.
-- `panic`: Panics with a message. Takes the message length from `a` and the pointer to the message from `b`.
-- `move <to:reg> <from:reg>`: Moves a value between two registers.
-- `movei <to:reg> <value:word>`: Moves a 64-bit immediate value into a register.
-- `moveib <to:reg> <from:reg>`: Moves an 8-bit immediate value into a register.
-- `load <to:reg> <from:reg>`: Interprets the content of the `from` register as an address and moves the 64 bits at that address into the `to` register.
-- `loadb <to:reg> <from:reg>`: Interprets the content of the `from` register as an address and moves the 8 bits at that address into the `to` register.
-- `store <to:reg> <from:reg>`: Interprets the content of the `to` register as an address and moves the content of the `from` register to that address.
-- `storeb <to:reg> <from:reg>`: Interprets the content of the `to` register as an address and moves the lower 8 bits of the `from` register to that address.
-- `push <reg:reg>`: Sugar for `sub sp 8`, `store sp reg`.
-- `pop <reg:reg>`: Sugar for `load reg sp`, `add sp 8`.
-- `jump <by:byte>`: Adds `by` to `ip`. Jumps are relative to the start of this instruction.
-- `cjump <by:byte>`: Adds `by` to `ip` if `st` is not `0`. Jumps are relative to the start of this instruction.
-- `call <target:word>`: Sugar for `push ip`, `movei target ip`.
-- `ret`: Sugar for `load ip sp`, `addi sp 8` as if executed as a single instruction.
-- `devicecall <device:byte>`: Makes the device handle the devicecall. It can access all the memory and registers.
-- `cmp <left:reg> <right:reg>`: Saves `left` - `right` in `st`.
-- `iszero`: If `st` is `0`, sets `st` to `1`, otherwise to `0`.
-- `isless`: If `st` is less than `0`, sets `st` to `1`, otherwise to `0`.
-- `isgreater`: If `st` is greater than `0`, sets `st` to `1`, otherwise to `0`.
-- `islessequal`: If `st` is less than or equal `0`, sets `st` to `1`, otherwise to `0`.
-- `isgreaterequal`: If `st` is greater than or equal `0`, sets `st` to `1`, otherwise to `0`.
-- `add <to:reg> <from:reg>`: Adds `from` to `to`.
-- `sub <to:reg> <from:reg>`: Subtracts `from` from `to`.
-- `mul <to:reg> <from:reg>`: Multiplies `to` and `from`. Saves the result in `to`.
-- `div <dividend:reg> <divisor:reg>`: Divides `dividend` by `divisor`. Saves the floored result in `dividend`, the remainder in `divisor`.
-- `and <to:reg> <from:reg>`: Binary-ands `to` and `from`. Saves the result in `to`.
-- `or <to:reg> <from:reg>`: Binary-ors `to` and `from`. Saves the result in `to`.
-- `xor <to:reg> <from:reg>`: Binary-xors `to` and `from`. Saves the result in `to`.
+| opcode | mnemonic       | arg 0         | arg 1        | description                                                                                           |
+| ------ | -------------- | ------------- | ------------ | ----------------------------------------------------------------------------------------------------- |
+| 00     | nop            | -             | -            | Does nothing.                                                                                         |
+| e0     | panic          | -             | -            | Panics with a message. Interprets `a` as a pointer to a message and `b` as the length of the message. |
+| d0     | move           | to: reg       | from: reg    | Sets `to` to `from`.                                                                                  |
+| d1     | movei          | to: reg       | value: word  | Sets `to` to `value`.                                                                                 |
+| d2     | moveib         | to: reg       | value: byte  | Sets `to` to `value`, zeroing the upper bits.                                                         |
+| d3     | load           | to: reg       | from: reg    | Interprets `from` as an address and sets `to` to the 64 bits at that address in memory.               |
+| d4     | loadb          | to: reg       | from: reg    | Interprets `from` as an address and sets `to` to the 8 bits at that address in memory.                |
+| d5     | store          | to: reg       | from: reg    | Interprets `to` as an address and sets the 64 bits at that address in memory to `from`.               |
+| d6     | storeb         | to: reg       | from: reg    | Interprets `to` as an address and sets the 8 bits at that address in memory to `from`.                |
+| d7     | push           | reg: reg      | -            | Decreases `sp` by 8, then runs `store sp reg`.                                                        |
+| d8     | pop            | reg: reg      | -            | Runs `load reg sp`, then increases `sp` by 8.                                                         |
+| f0     | jump           | to: word      | -            | Runs `loadi ip to`.                                                                                   |
+| f1     | cjump          | to: word      | -            | Runs `jump to` if `st` is not 0.                                                                      |
+| f2     | call           | target: word  | -            | Runs `push ip`, `jump target`.                                                                        |
+| f3     | ret            | -             | -            | Runs `load ip`, then increases `sp` by 8.                                                             |
+| f4     | syscall        | number: byte  | -            | Performs a syscall. Behavior depends on the syscall. The syscall can access all registers and memory. |
+| c0     | cmp            | left: reg     | right: reg   | Saves `left` - `right` in `st`.                                                                       |
+| c1     | isequal        | -             | -            | If `st` is 0, sets `st` to 1, otherwise to 0.                                                         |
+| c2     | isless         | -             | -            | If `st` is less than 0, sets `st` to 1, otherwise to 0.                                               |
+| c3     | isgreater      | -             | -            | If `st` is greater than 0, sets `st` to 1, otherwise to 0.                                            |
+| c4     | islessequal    | -             | -            | If `st` is 0 or less, sets `st` to 1, otherwise to 0.                                                 |
+| c5     | isgreaterequal | -             | -            | If `st` is 0 or greater, sets `st` to 1, otherwise to 0.                                              |
+| a0     | add            | to: reg       | from: reg    | Adds `from` to `to`.                                                                                  |
+| a1     | sub            | to: reg       | from: reg    | Subtracts `from` from `to`.                                                                           |
+| a2     | mul            | to: reg       | from: reg    | Multiplies `from` and `to`. Saves the result in `to`.                                                 |
+| a3     | div            | dividend: reg | divisor: reg | Divides `dividend` by `divisor`. Saves the floored result in `dividend`, the remainder in `divisor`.  |
+| b0     | and            | to: reg       | from: reg    | Binary-ands `to` and `from`. Saves the result in `to`.                                                |
+| b1     | or             | to: reg       | from: reg    | Binary-ors `to` and `from`. Saves the result in `to`.                                                 |
+| b2     | xor            | to: reg       | from: reg    | Binary-xors `to` and `from`. Saves the result in `to`.                                                |
+| b3     | negate         | to: reg       | -            | Negates `to`.                                                                                         |
 
 ## Recipes
 
@@ -132,13 +99,6 @@ The anatomy of a recipe file:
   - section type `1`
   - length (8 bytes)
   - bytes
-- devices
-  - section type `2`
-  - length (8 bytes)
-  - number of devices (1 byte)
-  - for each device (sockets assigned sequentially)
-    - length of the hint (1 byte)
-    - hint (length parsed above)
 - machine code
   - section type `3`
   - length (8 bytes)

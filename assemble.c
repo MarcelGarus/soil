@@ -337,32 +337,6 @@ void main(int argc, char** argv) {
 
   emit_str(str("soil"));
 
-  // Device section
-  emit_byte(2); // type: devices
-  Pos pointer_to_device_section_len = output.len;
-  emit_word(0);
-
-  Str devices[256];
-  for (int i = 0; i < 256; i++) devices[i].len = 0;
-  while (consume_prefix('@')) {
-    int index = parse_num();
-    Str name = parse_str();
-    devices[index] = name;
-  }
-  int num_devices = 256;
-  while (num_devices > 0 && devices[num_devices - 1].len == 0) num_devices--;
-  emit_byte(num_devices); // num devices
-  Pos device_hints[256];
-  for (int i = 0; i < num_devices; i++) {
-    device_hints[i] = output.len;
-    emit_byte(devices[i].len);
-    emit_str(devices[i]);
-  }
-  overwrite_word(
-    pointer_to_device_section_len,
-    output.len - pointer_to_device_section_len - 8
-  );
-
   // Machine code section
   emit_byte(3);  // type: machine code
   Pos pointer_to_machine_code_section_len = output.len;
@@ -439,7 +413,7 @@ void main(int argc, char** argv) {
       else if (strequal(command, str("cjump"))) EMIT_OP_REG_LABEL(0xf1)
       else if (strequal(command, str("call"))) EMIT_OP_WORD(0xf2)
       else if (strequal(command, str("ret"))) EMIT_OP(0xf3)
-      else if (strequal(command, str("devicecall"))) EMIT_OP_BYTE(0xf4)
+      else if (strequal(command, str("syscall"))) EMIT_OP_BYTE(0xf4)
       else if (strequal(command, str("cmp"))) EMIT_OP_BYTE(0xc0)
       else if (strequal(command, str("isequal"))) EMIT_OP(0xc1)
       else if (strequal(command, str("isless"))) EMIT_OP(0xc2)

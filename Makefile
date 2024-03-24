@@ -1,9 +1,9 @@
 all: assemble soil
 
-assemble:
+assemble: assemble.c
 	gcc assemble.c -o assemble
 
-soil:
+soil: soil.fasm
 	fasm soil.fasm
 	chmod a+x soil
 
