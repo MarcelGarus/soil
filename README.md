@@ -1,31 +1,22 @@
 # Soil
 
-Soil is a bytecode interpreter.
-It can run Soil binaries, which are files that end with `.soil`.
-
-Soil is designed to be easy to implement on typical machines.
-It has 8 registers and memory.
+Soil is a bytecode interpreter that is designed to be easy to implement on typical machines.
 
 ![Soil](Soil.png)
 
-## Binaries
+To get started, run `make`.
+This creates two executables:
 
-Soil binaries contain the machine code.
-They can also contain a description of the program and debug information.
+- `assemble`: can turn `.recipe` files (Soil assembly) into `.soil` files (Soil binaries).
+- `soil`: can run `.soil` files
 
-Upon startup, Soil does the following:
+For example, to run the `hello.recipe`, you can run this:
 
-1. Load the machine code into memory at address 0
-2. Set initial register contents
-   1. the instruction pointer `ip` to 0, the address of the machine code
-   2. the stack pointer `sp` to the last memory address
-   3. all other registers to zero
-3. Run the code
-   1. Parse the instruction that `ip` points to
-   2. Run it
-   3. Repeat
+```sh
+cat hello.recipe | ./assemble | ./soil
+```
 
-## Registers
+## The Anatomy of Soil
 
 Soil has 8 registers, all of which hold 64 bits.
 
@@ -39,6 +30,21 @@ Soil has 8 registers, all of which hold 64 bits.
 | `c`  | general-purpose register |
 | `d`  | general-purpose register |
 | `e`  | general-purpose register |
+
+It also has byte-addressed memory.
+For now, the size of the memory is hardcoded to something big.
+
+Upon startup, Soil does the following:
+
+1. Load the machine code into memory at address 0
+2. Set initial register contents
+   1. the instruction pointer `ip` to 0, the address of the machine code
+   2. the stack pointer `sp` to the last memory address
+   3. all other registers to zero
+3. Run the code
+   1. Parse the instruction that `ip` points to
+   2. Run it
+   3. Repeat
 
 ## Instructions
 
@@ -79,26 +85,23 @@ The following instructions are available:
 | b2     | xor            | to: reg       | from: reg    | Binary-xors `to` and `from`. Saves the result in `to`.                                                |
 | b3     | negate         | to: reg       | -            | Negates `to`.                                                                                         |
 
-## Recipes
+## Binaries
 
-Recipes are a textual representation of Soil machine code.
-Recipe files end with `.recipe` and can be compiled into Soil binaries.
-
-The anatomy of a recipe file:
+Binary files are stuctured like this:
 
 - magic bytes `soil` (4 bytes)
-- the only thing following are sections
+- the only thing following are sections, each of which has:
   - type (1 byte)
   - length (8 byte), useful for skipping sections
   - content (length parsed above)
 - name
   - section type `0`
   - length (8 bytes)
-  - bytes
+  - content (length parsed above)
 - description
   - section type `1`
   - length (8 bytes)
-  - bytes
+  - content (length parsed above)
 - machine code
   - section type `3`
   - length (8 bytes)
