@@ -338,7 +338,7 @@ void main(int argc, char** argv) {
   emit_str(str("soil"));
 
   // Machine code section
-  emit_byte(3);  // type: machine code
+  emit_byte(0);  // type: machine code
   Pos pointer_to_machine_code_section_len = output.len;
   emit_word(0); // len of machine code
 

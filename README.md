@@ -94,15 +94,15 @@ Binary files are stuctured like this:
   - type (1 byte)
   - length (8 byte), useful for skipping sections
   - content (length parsed above)
-- name
+- machine code
   - section type `0`
   - length (8 bytes)
-  - content (length parsed above)
-- description
+  - machine code (length parsed above)
+- name
   - section type `1`
   - length (8 bytes)
   - content (length parsed above)
-- machine code
-  - section type `3`
+- description
+  - section type `2`
   - length (8 bytes)
-  - machine code (length parsed above)
+  - content (length parsed above)

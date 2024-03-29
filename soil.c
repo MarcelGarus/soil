@@ -23,11 +23,11 @@ Word reg[8]; // ip, sp, st, a, b, c, d, e
 
 Byte* mem;
 
-void (*devices[256])();
+void (*syscall_handlers[256])();
 
-void device_none() { panic(1, "Device not connected."); }
-void device_exit() { exit(REGA); }
-void device_stdout() { for (int i = 0; i < REGB; i++) printf("%c", mem[REGA + i]); }
+void syscall_none() { panic(1, "Invalid syscall number."); }
+void syscall_exit() { exit(REGA); }
+void syscall_print() { for (int i = 0; i < REGB; i++) printf("%c", mem[REGA + i]); }
 
 Word read_word(Byte* bin, Word pos) {
   Word word;
@@ -39,7 +39,9 @@ Word read_word(Byte* bin, Word pos) {
 void init_vm(Byte* bin, int len) {
   for (int i = 0; i < 8; i++) reg[i] = 0;
   mem = malloc(1000);
-  for (int socket = 0; socket < 256; socket++) devices[socket] = device_none;
+  for (int i = 0; i < 256; i++) syscall_handlers[i] = syscall_none;
+  syscall_handlers[0] = syscall_exit;
+  syscall_handlers[1] = syscall_print;
 
   if (bin[0] != 's' || bin[1] != 'o' || bin[2] != 'i' || bin[3] != 'l')
     panic(1, "Magic bytes don't match.");
@@ -49,23 +51,7 @@ void init_vm(Byte* bin, int len) {
     int section_type = bin[cursor];
     int section_len = read_word(bin, cursor + 1);
     cursor += 9;
-    if (section_type == 2) {
-      // devices
-      int num_devices = bin[cursor];
-      cursor++;
-      for (int socket = 0; socket < num_devices; socket++) {
-        int hint_len = bin[cursor];
-        char* hint = bin + cursor + 1;
-        if (hint_len == 4 && strncmp(hint, "exit", 4) == 0) {
-          devices[socket] = device_exit;
-        } else if (hint_len == 6 && strncmp(hint, "stdout", 6) == 0) {
-          devices[socket] = device_stdout;
-        } else {
-          panic(1, "Unknown device.");
-        }
-        cursor += hint_len + 1;
-      }
-    } else if (section_type == 3) {
+    if (section_type == 0) {
       // machine code
       printf("machine code is at %x\n", cursor);
       for (int j = 0; j < section_len; j++) mem[j] = bin[cursor + j];
@@ -109,7 +95,7 @@ void run_single() {
     case 0xf1: if (ST != 0) IP = *(Word*)(mem + IP + 1); break; // cjump
     case 0xf2: SP -= 8; *(Word*)(mem + SP) = REG1; IP = *(Word*)(mem + IP + 1); break; // call
     case 0xf3: IP = *(Word*)(mem + SP); SP += 8; break; // ret
-    case 0xf4: devices[mem[IP + 1]](); IP += 2; break; // devicecall
+    case 0xf4: syscall_handlers[mem[IP + 1]](); IP += 2; break; // devicecall
     case 0xc0: ST = REG1 - REG2; IP += 2; break; // cmp
     case 0xc1: ST = ST == 0 ? 1 : 0; IP += 1; break; // isequal
     case 0xc2: ST = (int64_t)ST < 0 ? 1 : 0; IP += 1; break; // isless

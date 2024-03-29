@@ -136,8 +136,8 @@ load_binary:
 ; ==================
 ;
 ; .soil files don't just contain the machine code. They also contain other stuff
-; such as which devices are expected to be connected where. Here, we implement
-; a parser that parses a binary and sets up the VM state (registers and memory).
+; such as debug information. Here, we implement a parser that parses a binary
+; and sets up the VM state (registers and memory).
 ;
 ; While parsing sections, we always keep the following information in registers:
 ; - r8: The cursor through the binary.
@@ -184,7 +184,7 @@ init_vm_from_binary:
   eat_byte r10b ; type
   eat_word r11 ; length
   ; type: machine code
-  cmp r10b, 3
+  cmp r10b, 0
   je .parse_machine_code
   ; type: unknown
   add r8, r11 ; skip section
@@ -325,7 +325,7 @@ run:
   dq .cjump ; f1
   dq .call ; f2
   dq .ret ; f3
-  dq .devicecall ; f4
+  dq .syscall ; f4
   invalid_opcodes 0f5h, 0ffh
 
   ; for instructions with one register argument
@@ -446,10 +446,10 @@ run:
   mov r8, [rax]
   add r9, 8
   end_of_instruction
-.devicecall:
+.syscall:
   mov rax, 0
   mov al, [rsp + 1]
-  mov rax, [devices + rax * 8]
+  mov rax, [syscall_handlers + rax * 8]
   call rax
   advance_ip_by 2
   end_of_instruction
@@ -573,15 +573,15 @@ main:
   mov rdi, 0
   syscall
 
-; Devices
+; Syscalls
 ; =======
 
-device_exit:
+syscall_exit:
   mov rax, 60 ; exit syscall
   mov rdi, [rbp + r11] ; status code (from the a register)
   syscall
 
-device_stdout:
+syscall_print:
   mov rax, 1 ; write syscall
   mov rdi, 1 ; stdout
   lea rsi, [rbp + r11] ; pointer to string (from the a register)
@@ -613,7 +613,7 @@ binary:
 memory:
   dq 8
 
-devices:
-  dq device_exit
-  dq device_stdout
+syscall_handlers:
+  dq syscall_exit
+  dq syscall_print
   dq 254 dup 0
