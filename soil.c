@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#define MEMORY_SIZE 100000
+
 void panic(int exit_code, char* msg) {
   printf("%s\n", msg);
   exit(exit_code);
@@ -28,6 +30,7 @@ void (*syscall_handlers[256])();
 void syscall_none() { panic(1, "Invalid syscall number."); }
 void syscall_exit() { exit(REGA); }
 void syscall_print() { for (int i = 0; i < REGB; i++) printf("%c", mem[REGA + i]); }
+void syscall_log() { for (int i = 0; i < REGB; i++) fprintf(stderr, "%c", mem[REGA + i]); }
 
 Word read_word(Byte* bin, Word pos) {
   Word word;
@@ -38,7 +41,8 @@ Word read_word(Byte* bin, Word pos) {
 
 void init_vm(Byte* bin, int len) {
   for (int i = 0; i < 8; i++) reg[i] = 0;
-  mem = malloc(1000);
+  SP = MEMORY_SIZE;
+  mem = malloc(MEMORY_SIZE);
   for (int i = 0; i < 256; i++) syscall_handlers[i] = syscall_none;
   syscall_handlers[0] = syscall_exit;
   syscall_handlers[1] = syscall_print;
@@ -61,9 +65,9 @@ void init_vm(Byte* bin, int len) {
     }
   }
 
-  printf("Memory:");
-  for (int i = 0; i < 100; i++) printf(" %02x", mem[i]);
-  printf("\n");
+  // printf("Memory:");
+  // for (int i = 0; i < MEMORY_SIZE; i++) printf(" %02x", mem[i]);
+  // printf("\n");
 }
 
 void dump_reg() {
@@ -80,7 +84,7 @@ void run_single() {
 
   Byte opcode = mem[IP];
   switch (opcode) {
-    case 0x00: IP += 1; break; // nop
+    case 0x00: panic(1, "halted"); IP += 1; break; // nop
     case 0xe0: panic(1, "VM panicked"); return; // panic
     case 0xd0: REG1 = REG2; IP += 2; break; // move
     case 0xd1: REG1 = *(Word*)(mem + IP + 2); IP += 10; break; // movei
@@ -110,12 +114,12 @@ void run_single() {
     case 0xb1: REG1 |= REG2; IP += 2; break; // or
     case 0xb2: REG1 ^= REG2; IP += 2; break; // xor
     case 0xb3: REG1 = ~REG2; IP += 2; break; // negate
-    default: printf("Invalid instruction.\n"); return;
+    default: panic(1, "Invalid instruction.\n"); return;
   }
 }
 
 void run() {
-  for (int i = 0; i < 10; i++) {
+  for (int i = 0; 1; i++) {
     dump_reg();
     run_single();
   }

@@ -4,6 +4,8 @@ format ELF64 executable
 
 segment readable executable
 
+memory_size = 1000000
+
 jmp main
 
 ; Syntax notes for function definitions:
@@ -117,11 +119,11 @@ malloc:
 ; point to a memory region where the binary has been loaded into memory.
 
 load_binary:
-  mov r8, 1024
+  mov r8, memory_size
   mov r9, 1
   call malloc
   mov [binary], rax
-  mov qword [binary.cap], 1024
+  mov qword [binary.cap], memory_size
 .read_bytes:
   mov rax, 0
   mov rdi, 0
@@ -145,7 +147,7 @@ load_binary:
 
 init_vm_from_binary:
   ; Allocate memory for the VM.
-  mov r8, 1024
+  mov r8, memory_size
   mov r9, 8
   call malloc
   mov [memory], rax
@@ -589,6 +591,14 @@ syscall_print:
   syscall
   ret
 
+syscall_log:
+  mov rax, 1 ; write syscall
+  mov rdi, 2 ; stderr
+  lea rsi, [rbp + r11] ; pointer to message (from the a register)
+  mov rdx, r12 ; length of the message (from the b register)
+  syscall
+  ret
+
 segment readable writable
 
 my_heap:
@@ -616,4 +626,5 @@ memory:
 syscall_handlers:
   dq syscall_exit
   dq syscall_print
-  dq 254 dup 0
+  dq syscall_log
+  dq 253 dup 0

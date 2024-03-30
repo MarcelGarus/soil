@@ -66,10 +66,7 @@ void push_to_bytes(Bytes* vec, Byte byte) {
 
 bool is_whitespace(Char c) { return c == ' ' || c == '\n'; }
 bool is_num(Char c) { return c >= '0' && c <= '9'; }
-bool is_name(Char c) {
-  return c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' ||
-         c >= '0' && c <= '9' || c == '_' || c == '.';
-}
+bool is_name(Char c) { return !is_whitespace(c) && c != ':'; }
 
 // The parser.
 
@@ -101,8 +98,22 @@ bool consume_prefix(char prefix) {
   advance();
   return true;
 }
+Str parse_str(void) {
+  if (!consume_prefix('\"')) panic("Expected a string.");
+  Bytes str = make_bytes();
+  while (!is_at_end() && current != '"') {
+    push_to_bytes(&str, current);
+    advance();
+  }
+  if (!consume_prefix('\"')) panic("Expected end of string.");
+  Str str_str;
+  str_str.bytes = str.data;
+  str_str.len = str.len;
+  return str_str;
+}
 Str parse_name(void) {
   consume_whitespace();
+  if (current == '\"') return parse_str();
   bool parsed_something = false;
   Bytes name = make_bytes();
   while (!is_at_end() && is_name(current)) {
@@ -155,19 +166,6 @@ Reg parse_reg(void) {
   if (strequal(n, str("d"))) return reg_d;
   if (strequal(n, str("e"))) return reg_e;
   panic("Expected a register.");
-}
-Str parse_str(void) {
-  if (!consume_prefix('\"')) panic("Expected a string.");
-  Bytes str = make_bytes();
-  while (!is_at_end() && current != '"') {
-    push_to_bytes(&str, current);
-    advance();
-  }
-  if (!consume_prefix('\"')) panic("Expected end of string.");
-  Str str_str;
-  str_str.bytes = str.data;
-  str_str.len = str.len;
-  return str_str;
 }
 
 Byte to_bits(Reg reg) {
@@ -410,11 +408,11 @@ void main(int argc, char** argv) {
       else if (strequal(command, str("push"))) EMIT_OP_REG(0xd7)
       else if (strequal(command, str("pop"))) EMIT_OP_REG(0xd8)
       else if (strequal(command, str("jump"))) EMIT_OP_LABEL(0xf0)
-      else if (strequal(command, str("cjump"))) EMIT_OP_REG_LABEL(0xf1)
+      else if (strequal(command, str("cjump"))) EMIT_OP_LABEL(0xf1)
       else if (strequal(command, str("call"))) EMIT_OP_WORD(0xf2)
       else if (strequal(command, str("ret"))) EMIT_OP(0xf3)
       else if (strequal(command, str("syscall"))) EMIT_OP_BYTE(0xf4)
-      else if (strequal(command, str("cmp"))) EMIT_OP_BYTE(0xc0)
+      else if (strequal(command, str("cmp"))) EMIT_OP_REG_REG(0xc0)
       else if (strequal(command, str("isequal"))) EMIT_OP(0xc1)
       else if (strequal(command, str("isless"))) EMIT_OP(0xc2)
       else if (strequal(command, str("isgreater"))) EMIT_OP(0xc3)
