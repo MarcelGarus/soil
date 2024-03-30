@@ -158,19 +158,17 @@ void run() {
 int main(int argc, char** argv) {
   size_t cap = 8;
   size_t len = 0;
-  char *bin = (char*) malloc(8);
+  Byte *bin = (Byte*) malloc(8);
   if (bin == NULL) panic(2, "Out of memory.");
-  char ch;
-  do {
-    ch = fgetc(stdin);
+  for (int ch = fgetc(stdin); ch != EOF; ch = fgetc(stdin)) {
     if (len == cap) {
       cap *= 2;
       bin = realloc(bin, cap);
       if (bin == NULL) panic(2, "Out of memory.");
     }
-    bin[len] = ch;
+    bin[len] = (Byte)ch;
     len++;
-  } while (ch != EOF);
+  }
 
   init_vm(bin, len);
   run();
