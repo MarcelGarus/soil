@@ -25,6 +25,9 @@ Word reg[8]; // ip, sp, st, a, b, c, d, e
 
 Byte* mem;
 
+Word shadow_stack[1024];
+Word shadow_stack_len = 0;
+
 void (*syscall_handlers[256])();
 
 void syscall_none() { panic(1, "Invalid syscall number."); }
@@ -72,8 +75,28 @@ void init_vm(Byte* bin, int len) {
 
 void dump_reg() {
   printf(
-    "ip = %ld, sp = %ld, st = %ld, a = %ld, b = %ld, c = %ld, d = %ld, e = "
-    "%ld\n", reg[0], reg[1], reg[2], reg[3], reg[4], reg[5], reg[6], reg[7]);
+    "ip = %lx, sp = %lx, st = %lx, a = %lx, b = %lx, c = %lx, d = %lx, e = "
+    "%lx\n", reg[0], reg[1], reg[2], reg[3], reg[4], reg[5], reg[6], reg[7]);
+}
+
+void dump_and_panic(char* msg) {
+  printf("%s\n", msg);
+  printf("\n");
+  printf("Stack:\n");
+  for (int i = 0; i < shadow_stack_len; i++) {
+    printf("%8lx\n", shadow_stack[i]);
+  }
+  printf("\n");
+  printf("Registers:\n");
+  printf("ip = %8ld %8lx\n", IP, IP);
+  printf("sp = %8ld %8lx\n", SP, SP);
+  printf("st = %8ld %8lx\n", ST, ST);
+  printf("a  = %8ld %8lx\n", REGA, REGA);
+  printf("b  = %8ld %8lx\n", REGB, REGB);
+  printf("c  = %8ld %8lx\n", REGC, REGC);
+  printf("d  = %8ld %8lx\n", REGD, REGD);
+  printf("e  = %8ld %8lx\n", REGE, REGE);
+  exit(1);
 }
 
 typedef Byte Reg; // 4 bits would actually be enough, but meh
@@ -84,8 +107,8 @@ void run_single() {
 
   Byte opcode = mem[IP];
   switch (opcode) {
-    case 0x00: panic(1, "halted"); IP += 1; break; // nop
-    case 0xe0: panic(1, "VM panicked"); return; // panic
+    case 0x00: dump_and_panic("halted"); IP += 1; break; // nop
+    case 0xe0: dump_and_panic("VM panicked"); return; // panic
     case 0xd0: REG1 = REG2; IP += 2; break; // move
     case 0xd1: REG1 = *(Word*)(mem + IP + 2); IP += 10; break; // movei
     case 0xd2: REG1 = mem[IP + 2]; IP += 3; break; // moveib
@@ -97,8 +120,15 @@ void run_single() {
     case 0xd8: REG1 = *(Word*)(mem + SP); SP += 8; IP += 2; break; // pop
     case 0xf0: IP = *(Word*)(mem + IP + 1); break; // jump
     case 0xf1: if (ST != 0) IP = *(Word*)(mem + IP + 1); else IP += 9; break; // cjump
-    case 0xf2: SP -= 8; *(Word*)(mem + SP) = IP + 9; IP = *(Word*)(mem + IP + 1); break; // call
-    case 0xf3: IP = *(Word*)(mem + SP); SP += 8; break; // ret
+    case 0xf2:
+      Word return_target = IP + 9;
+      SP -= 8; *(Word*)(mem + SP) = return_target;
+      shadow_stack[shadow_stack_len] = return_target; shadow_stack_len++;
+      IP = *(Word*)(mem + IP + 1); break; // call
+    case 0xf3:
+      IP = *(Word*)(mem + SP); SP += 8;
+      shadow_stack_len--; if (shadow_stack[shadow_stack_len] != IP) dump_and_panic("Stack corrupted.");
+      break; // ret
     case 0xf4: syscall_handlers[mem[IP + 1]](); IP += 2; break; // syscall
     case 0xc0: ST = REG1 - REG2; IP += 2; break; // cmp
     case 0xc1: ST = ST == 0 ? 1 : 0; IP += 1; break; // isequal
@@ -114,7 +144,7 @@ void run_single() {
     case 0xb1: REG1 |= REG2; IP += 2; break; // or
     case 0xb2: REG1 ^= REG2; IP += 2; break; // xor
     case 0xb3: REG1 = ~REG2; IP += 2; break; // negate
-    default: panic(1, "Invalid instruction.\n"); return;
+    default: dump_and_panic("Invalid instruction.\n"); return;
   }
 }
 
