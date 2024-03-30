@@ -96,10 +96,10 @@ void run_single() {
     case 0xd7: SP -= 8; *(Word*)(mem + SP) = REG1; IP += 2; break; // push
     case 0xd8: REG1 = *(Word*)(mem + SP); SP += 8; IP += 2; break; // pop
     case 0xf0: IP = *(Word*)(mem + IP + 1); break; // jump
-    case 0xf1: if (ST != 0) IP = *(Word*)(mem + IP + 1); break; // cjump
-    case 0xf2: SP -= 8; *(Word*)(mem + SP) = REG1; IP = *(Word*)(mem + IP + 1); break; // call
+    case 0xf1: if (ST != 0) IP = *(Word*)(mem + IP + 1); else IP += 9; break; // cjump
+    case 0xf2: SP -= 8; *(Word*)(mem + SP) = IP + 9; IP = *(Word*)(mem + IP + 1); break; // call
     case 0xf3: IP = *(Word*)(mem + SP); SP += 8; break; // ret
-    case 0xf4: syscall_handlers[mem[IP + 1]](); IP += 2; break; // devicecall
+    case 0xf4: syscall_handlers[mem[IP + 1]](); IP += 2; break; // syscall
     case 0xc0: ST = REG1 - REG2; IP += 2; break; // cmp
     case 0xc1: ST = ST == 0 ? 1 : 0; IP += 1; break; // isequal
     case 0xc2: ST = (int64_t)ST < 0 ? 1 : 0; IP += 1; break; // isless

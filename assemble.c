@@ -354,41 +354,20 @@ void main(int argc, char** argv) {
       Str command = name;
 
       #define EMIT_OP(opcode) { emit_byte(opcode); }
-      #define EMIT_OP_REG(opcode) { \
-        emit_byte(opcode); \
-        emit_reg(parse_reg()); }
-      #define EMIT_OP_REG_REG(opcode) { \
-        emit_byte(opcode); \
-        emit_regs(parse_reg(), parse_reg()); }
-      #define EMIT_OP_REG_BYTE(opcode) { \
-        emit_byte(opcode); \
-        emit_reg(parse_reg()); \
-        emit_byte(parse_num()); }
-      #define EMIT_OP_REG_WORD(opcode) { \
-        emit_byte(opcode); \
-        emit_reg(parse_reg()); \
-        consume_whitespace(); \
-        if (is_num(current)) \
-          emit_word(parse_num()); \
-        else \
-          emit_label_ref(parse_name()); }
-      #define EMIT_OP_REG_LABEL(opcode) { \
-        emit_byte(opcode); \
-        emit_reg(parse_reg()); \
-        emit_label_ref(parse_name()); }
-      #define EMIT_OP_BYTE(opcode) { \
-        emit_byte(opcode); \
-        emit_byte(parse_num()); }
-      #define EMIT_OP_WORD(opcode) { \
-        emit_byte(opcode); \
-        consume_whitespace(); \
-        if (is_num(current)) \
-          emit_word(parse_num()); \
-        else \
-          emit_label_ref(parse_name()); }
-      #define EMIT_OP_LABEL(opcode) { \
-        emit_byte(opcode); \
-        emit_label_ref(parse_name()); }
+      #define EMIT_OP_REG(opcode) { emit_byte(opcode); emit_reg(parse_reg()); }
+      #define EMIT_OP_REG_REG(opcode) { emit_byte(opcode); \
+        Reg a = parse_reg(); Reg b = parse_reg(); emit_regs(a, b); }
+      #define EMIT_OP_REG_BYTE(opcode) { emit_byte(opcode); \
+        emit_reg(parse_reg()); emit_byte(parse_num()); }
+      #define EMIT_OP_REG_WORD(opcode) { emit_byte(opcode); \
+        emit_reg(parse_reg()); consume_whitespace(); \
+        if (is_num(current)) emit_word(parse_num()); else emit_label_ref(parse_name()); }
+      #define EMIT_OP_REG_LABEL(opcode) { emit_byte(opcode); \
+        emit_reg(parse_reg()); emit_label_ref(parse_name()); }
+      #define EMIT_OP_BYTE(opcode) { emit_byte(opcode); emit_byte(parse_num()); }
+      #define EMIT_OP_WORD(opcode) { emit_byte(opcode); consume_whitespace(); \
+        if (is_num(current)) emit_word(parse_num()); else emit_label_ref(parse_name()); }
+      #define EMIT_OP_LABEL(opcode) { emit_byte(opcode); emit_label_ref(parse_name()); }
 
       if (strequal(command, str("str"))) {
         Str str = parse_str();
