@@ -60,7 +60,6 @@ void init_vm(Byte* bin, int len) {
     cursor += 9;
     if (section_type == 0) {
       // machine code
-      printf("machine code is at %x\n", cursor);
       for (int j = 0; j < section_len; j++) mem[j] = bin[cursor + j];
       cursor += section_len;
     } else {
@@ -106,6 +105,7 @@ void run_single() {
   #define REG2 reg[mem[IP + 1] >> 4]
 
   Byte opcode = mem[IP];
+  // printf("running %x at %lx\n", opcode, IP);
   switch (opcode) {
     case 0x00: dump_and_panic("halted"); IP += 1; break; // nop
     case 0xe0: dump_and_panic("VM panicked"); return; // panic
@@ -150,7 +150,11 @@ void run_single() {
 
 void run() {
   for (int i = 0; 1; i++) {
-    dump_reg();
+    // dump_reg();
+    // printf("Memory:");
+    // for (int i = 0x18650; i < MEMORY_SIZE; i++)
+    //   printf("%c%02x", i == SP ? '|' : ' ', mem[i]);
+    // printf("\n");
     run_single();
   }
 }
