@@ -374,7 +374,8 @@ void main(int argc, char** argv) {
         for (int i = 0; i < str.len; i++) emit_byte(str.bytes[i]);
       }
       else if (strequal(command, str("byte"))) emit_byte(parse_num());
-      else if (strequal(command, str("word"))) emit_word(parse_num());
+      else if (strequal(command, str("word")))
+        if (is_num(current)) emit_word(parse_num()); else emit_label_ref(parse_name());
       else if (strequal(command, str("nop"))) EMIT_OP(0x00)
       else if (strequal(command, str("panic"))) EMIT_OP(0xe0)
       else if (strequal(command, str("move"))) EMIT_OP_REG_REG(0xd0)
@@ -406,9 +407,10 @@ void main(int argc, char** argv) {
       else if (strequal(command, str("xor"))) EMIT_OP_REG_REG(0xb2)
       else if (strequal(command, str("negate"))) EMIT_OP_REG(0xb3)
       else {
-        fprintf(stderr, "Command is ");
+        fprintf(stderr, "Command is \"");
         for (int i = 0; i < command.len; i++)
           fprintf(stderr, "%c", command.bytes[i]);
+        fprintf(stderr, "\".\n");
         panic("Unknown command.");
       }
     }
