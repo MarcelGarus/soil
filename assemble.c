@@ -423,6 +423,21 @@ void main(int argc, char** argv) {
   int machine_code_len = output.len - start_of_machine_code;
   overwrite_word(pointer_to_machine_code_section_len, machine_code_len);
 
+  emit_byte(3);  // type: debug info
+  Pos pointer_to_debug_info_len = output.len;
+  emit_word(0);  // len of debug info
+  Pos start_of_debug_info = output.len;
+  emit_word(labels.len); // number of labels
+  for (Pos i = 0; i < labels.len; i++) {
+    LabelAndPos label_and_pos = labels.entries[i];
+    emit_word(label_and_pos.pos);
+    emit_word(label_and_pos.label.len);
+    for (int j = 0; j < label_and_pos.label.len; j++)
+      emit_byte(label_and_pos.label.bytes[j]);
+  }
+  int debug_info_len = output.len - start_of_debug_info;
+  overwrite_word(pointer_to_debug_info_len, debug_info_len);
+
   for (int i = 0; i < output.len; i++) printf("%c", output.data[i]);
   // printf("%02x ", output.data[i]);
 

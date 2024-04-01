@@ -30,12 +30,23 @@ Word shadow_stack_len = 0;
 
 void (*syscall_handlers[256])();
 
+typedef struct { int pos; char* label; int len; } LabelAndPos;
+typedef struct { LabelAndPos* entries; int len; } Labels;
+Labels labels;
+
 void dump_and_panic(char* msg) {
   printf("%s\n", msg);
   printf("\n");
   printf("Stack:\n");
   for (int i = 0; i < shadow_stack_len; i++) {
-    printf("%8lx\n", shadow_stack[i]);
+    printf("%8lx ", shadow_stack[i]);
+    for (int j = labels.len - 1; j >= 0; j--)
+      if (labels.entries[j].pos <= shadow_stack[i]) {
+        for (int k = 0; k < labels.entries[j].len; k++)
+          printf("%c", labels.entries[j].label[k]);
+        break;
+      }
+    printf("\n");
   }
   printf("\n");
   printf("Registers:\n");
@@ -82,6 +93,17 @@ void init_vm(Byte* bin, int len) {
       // machine code
       for (int j = 0; j < section_len; j++) mem[j] = bin[cursor + j];
       cursor += section_len;
+    } else if (section_type == 3) {
+      // debug info
+      labels.len = read_word(bin, cursor);
+      labels.entries = malloc(sizeof(LabelAndPos) * labels.len);
+      cursor += 8;
+      for (int i = 0; i < labels.len; i++) {
+        labels.entries[i].pos = read_word(bin, cursor);
+        labels.entries[i].len = read_word(bin, cursor + 8);
+        labels.entries[i].label = bin + cursor + 16;
+        cursor += 16 + labels.entries[i].len;
+      }
     } else {
       cursor += section_len;
     }
