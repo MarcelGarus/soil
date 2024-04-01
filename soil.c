@@ -30,7 +30,27 @@ Word shadow_stack_len = 0;
 
 void (*syscall_handlers[256])();
 
-void syscall_none() { panic(1, "Invalid syscall number."); }
+void dump_and_panic(char* msg) {
+  printf("%s\n", msg);
+  printf("\n");
+  printf("Stack:\n");
+  for (int i = 0; i < shadow_stack_len; i++) {
+    printf("%8lx\n", shadow_stack[i]);
+  }
+  printf("\n");
+  printf("Registers:\n");
+  printf("ip = %8ld %8lx\n", IP, IP);
+  printf("sp = %8ld %8lx\n", SP, SP);
+  printf("st = %8ld %8lx\n", ST, ST);
+  printf("a  = %8ld %8lx\n", REGA, REGA);
+  printf("b  = %8ld %8lx\n", REGB, REGB);
+  printf("c  = %8ld %8lx\n", REGC, REGC);
+  printf("d  = %8ld %8lx\n", REGD, REGD);
+  printf("e  = %8ld %8lx\n", REGE, REGE);
+  exit(1);
+}
+
+void syscall_none() { dump_and_panic("Invalid syscall number."); }
 void syscall_exit() { exit(REGA); }
 void syscall_print() { for (int i = 0; i < REGB; i++) printf("%c", mem[REGA + i]); }
 void syscall_log() { for (int i = 0; i < REGB; i++) fprintf(stderr, "%c", mem[REGA + i]); }
@@ -76,26 +96,6 @@ void dump_reg() {
   printf(
     "ip = %lx, sp = %lx, st = %lx, a = %lx, b = %lx, c = %lx, d = %lx, e = "
     "%lx\n", reg[0], reg[1], reg[2], reg[3], reg[4], reg[5], reg[6], reg[7]);
-}
-
-void dump_and_panic(char* msg) {
-  printf("%s\n", msg);
-  printf("\n");
-  printf("Stack:\n");
-  for (int i = 0; i < shadow_stack_len; i++) {
-    printf("%8lx\n", shadow_stack[i]);
-  }
-  printf("\n");
-  printf("Registers:\n");
-  printf("ip = %8ld %8lx\n", IP, IP);
-  printf("sp = %8ld %8lx\n", SP, SP);
-  printf("st = %8ld %8lx\n", ST, ST);
-  printf("a  = %8ld %8lx\n", REGA, REGA);
-  printf("b  = %8ld %8lx\n", REGB, REGB);
-  printf("c  = %8ld %8lx\n", REGC, REGC);
-  printf("d  = %8ld %8lx\n", REGD, REGD);
-  printf("e  = %8ld %8lx\n", REGE, REGE);
-  exit(1);
 }
 
 typedef Byte Reg; // 4 bits would actually be enough, but meh
