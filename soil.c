@@ -3,8 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MEMORY_SIZE 100000
-#define TRACE_CALLS 0
+#define MEMORY_SIZE 10000000
+#define TRACE_CALLS 1
 
 void panic(int exit_code, char* msg) {
   printf("%s\n", msg);
@@ -143,7 +143,8 @@ void init_vm(Byte* bin, int len) {
     cursor += 8; \
     word; \
   })
-  #define CHECK_MAGIC_BYTE(c) if (EAT_BYTE != c) panic(1, "Magic bytes don't match.");
+  #define CHECK_MAGIC_BYTE(c) \
+    if (EAT_BYTE != c) panic(1, "magic bytes don't match");
 
   CHECK_MAGIC_BYTE('s')
   CHECK_MAGIC_BYTE('o')
