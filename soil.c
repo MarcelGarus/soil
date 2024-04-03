@@ -34,20 +34,22 @@ typedef struct { int pos; char* label; int len; } LabelAndPos;
 typedef struct { LabelAndPos* entries; int len; } Labels;
 Labels labels;
 
+void print_stack_entry(Word pos) {
+  printf("%8lx ", pos);
+  for (int j = labels.len - 1; j >= 0; j--)
+    if (labels.entries[j].pos <= pos) {
+      for (int k = 0; k < labels.entries[j].len; k++)
+        printf("%c", labels.entries[j].label[k]);
+      break;
+    }
+  printf("\n");
+}
 void dump_and_panic(char* msg) {
   printf("%s\n", msg);
   printf("\n");
   printf("Stack:\n");
-  for (int i = 0; i < shadow_stack_len; i++) {
-    printf("%8lx ", shadow_stack[i]);
-    for (int j = labels.len - 1; j >= 0; j--)
-      if (labels.entries[j].pos <= shadow_stack[i]) {
-        for (int k = 0; k < labels.entries[j].len; k++)
-          printf("%c", labels.entries[j].label[k]);
-        break;
-      }
-    printf("\n");
-  }
+  for (int i = 0; i < shadow_stack_len; i++) print_stack_entry(shadow_stack[i]);
+  print_stack_entry(IP);
   printf("\n");
   printf("Registers:\n");
   printf("ip = %8ld %8lx\n", IP, IP);
@@ -166,7 +168,7 @@ void run_single() {
     case 0xb1: REG1 |= REG2; IP += 2; break; // or
     case 0xb2: REG1 ^= REG2; IP += 2; break; // xor
     case 0xb3: REG1 = ~REG2; IP += 2; break; // negate
-    default: dump_and_panic("Invalid instruction.\n"); return;
+    default: dump_and_panic("Invalid instruction."); return;
   }
 }
 
