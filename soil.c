@@ -34,6 +34,15 @@ typedef struct { int pos; char* label; int len; } LabelAndPos;
 typedef struct { LabelAndPos* entries; int len; } Labels;
 Labels labels;
 
+LabelAndPos find_label(Word pos) {
+  for (int j = labels.len - 1; j >= 0; j--)
+    if (labels.entries[j].pos <= pos)
+      return labels.entries[j];
+  LabelAndPos lap;
+  lap.pos = 0;
+  lap.len = 0;
+  return lap;
+}
 void print_stack_entry(Word pos) {
   printf("%8lx ", pos);
   for (int j = labels.len - 1; j >= 0; j--)
