@@ -78,27 +78,31 @@ void dump_and_panic(char* msg) {
   exit(1);
 }
 
-void syscall_none() { dump_and_panic("Invalid syscall number."); }
+void syscall_none() { dump_and_panic("invalid syscall number"); }
 void syscall_exit() { exit(REGA); }
-void syscall_print() { for (int i = 0; i < REGB; i++) printf("%c", mem[REGA + i]); }
-void syscall_log() { for (int i = 0; i < REGB; i++) fprintf(stderr, "%c", mem[REGA + i]); }
+void syscall_print() {
+  for (int i = 0; i < REGB; i++) printf("%c", mem[REGA + i]);
+}
+void syscall_log() {
+  for (int i = 0; i < REGB; i++) fprintf(stderr, "%c", mem[REGA + i]);
+}
 void syscall_create() {
   char filename[REGB];
   for (int i = 0; i < REGB; i++) filename[i] = mem[REGA + i];
   mem[REGB] = 0;
-  REGA = fopen(filename, "w+");
+  REGA = (Word)fopen(filename, "w+");
 }
 void syscall_open_reading() {
   char filename[REGB];
   for (int i = 0; i < REGB; i++) filename[i] = mem[REGA + i];
   mem[REGB] = 0;
-  REGA = fopen(filename, "r");
+  REGA = (Word)fopen(filename, "r");
 }
 void syscall_open_writing() {
   char filename[REGB];
   for (int i = 0; i < REGB; i++) filename[i] = mem[REGA + i];
   mem[REGB] = 0;
-  REGA = fopen(filename, "w+");
+  REGA = (Word)fopen(filename, "w+");
 }
 void syscall_read() { fread(mem + REGB, 1, REGC, REGA); }
 void syscall_write() { fwrite(mem + REGB, 1, REGC, REGA); }
@@ -180,14 +184,28 @@ void run_single() {
     case 0xd0: REG1 = REG2; IP += 2; break; // move
     case 0xd1: REG1 = *(Word*)(mem + IP + 2); IP += 10; break; // movei
     case 0xd2: REG1 = mem[IP + 2]; IP += 3; break; // moveib
-    case 0xd3: REG1 = *(Word*)(mem + REG2); IP += 2; break; // load
-    case 0xd4: REG1 = mem[REG2]; IP += 2; break; // loadb
-    case 0xd5: *(Word*)(mem + REG1) = REG2; IP += 2; break; // store
-    case 0xd6: mem[REG1] = REG2; IP += 2; break; // storeb
+    case 0xd3: { // load
+      if (REG2 >= MEMORY_SIZE) dump_and_panic("segmentation fault");
+      REG1 = *(Word*)(mem + REG2); IP += 2; break;
+    }
+    case 0xd4: { // loadb
+      if (REG2 >= MEMORY_SIZE) dump_and_panic("segmentation fault");
+      REG1 = mem[REG2]; IP += 2; break;
+    }
+    case 0xd5: { // store
+      if (REG2 >= MEMORY_SIZE) dump_and_panic("segmentation fault");
+      *(Word*)(mem + REG1) = REG2; IP += 2; break;
+    }
+    case 0xd6: { // storeb
+      if (REG2 >= MEMORY_SIZE) dump_and_panic("segmentation fault");
+      mem[REG1] = REG2; IP += 2; break;
+    }
     case 0xd7: SP -= 8; *(Word*)(mem + SP) = REG1; IP += 2; break; // push
     case 0xd8: REG1 = *(Word*)(mem + SP); SP += 8; IP += 2; break; // pop
     case 0xf0: IP = *(Word*)(mem + IP + 1); break; // jump
-    case 0xf1: if (ST != 0) IP = *(Word*)(mem + IP + 1); else IP += 9; break; // cjump
+    case 0xf1: { // cjump
+      if (ST != 0) IP = *(Word*)(mem + IP + 1); else IP += 9; break;
+    }
     case 0xf2: {
       if (TRACE_CALLS) {
         for (int i = 0; i < shadow_stack_len; i++)
@@ -207,10 +225,13 @@ void run_single() {
       shadow_stack[shadow_stack_len] = return_target; shadow_stack_len++;
       IP = *(Word*)(mem + IP + 1); break; // call
     }
-    case 0xf3:
+    case 0xf3: { // ret
       IP = *(Word*)(mem + SP); SP += 8;
-      shadow_stack_len--; if (shadow_stack[shadow_stack_len] != IP) dump_and_panic("Stack corrupted.");
-      break; // ret
+      shadow_stack_len--;
+      if (shadow_stack[shadow_stack_len] != IP)
+        dump_and_panic("stack corrupted");
+      break;
+    }
     case 0xf4: syscall_handlers[mem[IP + 1]](); IP += 2; break; // syscall
     case 0xc0: ST = REG1 - REG2; IP += 2; break; // cmp
     case 0xc1: ST = ST == 0 ? 1 : 0; IP += 1; break; // isequal
@@ -227,7 +248,7 @@ void run_single() {
     case 0xb1: REG1 |= REG2; IP += 2; break; // or
     case 0xb2: REG1 ^= REG2; IP += 2; break; // xor
     case 0xb3: REG1 = ~REG1; IP += 2; break; // negate
-    default: dump_and_panic("Invalid instruction."); return;
+    default: dump_and_panic("invalid instruction"); return;
   }
 }
 
@@ -246,12 +267,12 @@ int main(int argc, char** argv) {
   size_t cap = 8;
   size_t len = 0;
   Byte *bin = (Byte*) malloc(8);
-  if (bin == NULL) panic(2, "Out of memory.");
+  if (bin == NULL) panic(2, "out of memory");
   for (int ch = fgetc(stdin); ch != EOF; ch = fgetc(stdin)) {
     if (len == cap) {
       cap *= 2;
       bin = realloc(bin, cap);
-      if (bin == NULL) panic(2, "Out of memory.");
+      if (bin == NULL) panic(2, "out of memory");
     }
     bin[len] = (Byte)ch;
     len++;
