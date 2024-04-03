@@ -82,29 +82,38 @@ void init_vm(Byte* bin, int len) {
   for (int i = 0; i < 256; i++) syscall_handlers[i] = syscall_none;
   syscall_handlers[0] = syscall_exit;
   syscall_handlers[1] = syscall_print;
+  syscall_handlers[2] = syscall_log;
 
-  if (bin[0] != 's' || bin[1] != 'o' || bin[2] != 'i' || bin[3] != 'l')
-    panic(1, "Magic bytes don't match.");
+  int cursor = 0;
+  #define EAT_BYTE bin[cursor++]
+  #define EAT_WORD ({ \
+    Word word; \
+    for (int i = 7; i >= 0; i--) word = (word << 8) + bin[cursor + i]; \
+    cursor += 8; \
+    word; \
+  })
+  #define CHECK_MAGIC_BYTE(c) if (EAT_BYTE != c) panic(1, "Magic bytes don't match.");
 
-  int cursor = 4;
+  CHECK_MAGIC_BYTE('s')
+  CHECK_MAGIC_BYTE('o')
+  CHECK_MAGIC_BYTE('i')
+  CHECK_MAGIC_BYTE('l')
+
   while (cursor < len) {
-    int section_type = bin[cursor];
-    int section_len = read_word(bin, cursor + 1);
-    cursor += 9;
+    int section_type = EAT_BYTE;
+    int section_len = EAT_WORD;
     if (section_type == 0) {
       // machine code
-      for (int j = 0; j < section_len; j++) mem[j] = bin[cursor + j];
-      cursor += section_len;
+      for (int j = 0; j < section_len; j++) mem[j] = EAT_BYTE;
     } else if (section_type == 3) {
       // debug info
-      labels.len = read_word(bin, cursor);
+      labels.len = EAT_WORD;
       labels.entries = malloc(sizeof(LabelAndPos) * labels.len);
-      cursor += 8;
       for (int i = 0; i < labels.len; i++) {
-        labels.entries[i].pos = read_word(bin, cursor);
-        labels.entries[i].len = read_word(bin, cursor + 8);
-        labels.entries[i].label = bin + cursor + 16;
-        cursor += 16 + labels.entries[i].len;
+        labels.entries[i].pos = EAT_WORD;
+        labels.entries[i].len = EAT_WORD;
+        labels.entries[i].label = bin + cursor;
+        cursor += labels.entries[i].len;
       }
     } else {
       cursor += section_len;
@@ -129,7 +138,7 @@ void run_single() {
   #define REG2 reg[mem[IP + 1] >> 4]
 
   Byte opcode = mem[IP];
-  // printf("running %x at %lx\n", opcode, IP);
+  // printf("ip %lx has opcode %x\n", IP, opcode);
   switch (opcode) {
     case 0x00: dump_and_panic("halted"); IP += 1; break; // nop
     case 0xe0: dump_and_panic("VM panicked"); return; // panic
