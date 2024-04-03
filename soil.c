@@ -156,12 +156,7 @@ void run_single() {
   // printf("ip %lx has opcode %x\n", IP, opcode);
   switch (opcode) {
     case 0x00: dump_and_panic("halted"); IP += 1; break; // nop
-    case 0xe0: { // panic
-      for (int i = 0; i < REGB; i++) fprintf(stderr, "%c", mem[REGA + i]);
-      fprintf(stderr, "\n");
-      dump_and_panic("VM panicked.");
-      return;
-    }
+    case 0xe0: dump_and_panic("panicked"); return; // panic
     case 0xd0: REG1 = REG2; IP += 2; break; // move
     case 0xd1: REG1 = *(Word*)(mem + IP + 2); IP += 10; break; // movei
     case 0xd2: REG1 = mem[IP + 2]; IP += 3; break; // moveib

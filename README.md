@@ -55,7 +55,7 @@ The following instructions are available:
 | opcode | mnemonic       | arg 0         | arg 1        | description                                                                                           |
 | ------ | -------------- | ------------- | ------------ | ----------------------------------------------------------------------------------------------------- |
 | 00     | nop            | -             | -            | Does nothing.                                                                                         |
-| e0     | panic          | -             | -            | Panics with a message. Interprets `a` as a pointer to a message and `b` as the length of the message. |
+| e0     | panic          | -             | -            | Panics.                                                                                               |
 | d0     | move           | to: reg       | from: reg    | Sets `to` to `from`.                                                                                  |
 | d1     | movei          | to: reg       | value: word  | Sets `to` to `value`.                                                                                 |
 | d2     | moveib         | to: reg       | value: byte  | Sets `to` to `value`, zeroing the upper bits.                                                         |
