@@ -4,6 +4,7 @@
 #include <string.h>
 
 #define MEMORY_SIZE 100000
+#define TRACE_CALLS 0
 
 void panic(int exit_code, char* msg) {
   printf("%s\n", msg);
@@ -172,11 +173,25 @@ void run_single() {
     case 0xd8: REG1 = *(Word*)(mem + SP); SP += 8; IP += 2; break; // pop
     case 0xf0: IP = *(Word*)(mem + IP + 1); break; // jump
     case 0xf1: if (ST != 0) IP = *(Word*)(mem + IP + 1); else IP += 9; break; // cjump
-    case 0xf2:
+    case 0xf2: {
+      if (TRACE_CALLS) {
+        for (int i = 0; i < shadow_stack_len; i++)
+          printf(" ");
+        LabelAndPos lap = find_label(*(Word*)(mem + IP + 1));
+        for (int i = 0; i < lap.len; i++) printf("%c", lap.label[i]);
+        for (int i = shadow_stack_len + lap.len; i < 50; i++) printf(" ");
+        for (int i = SP; i < MEMORY_SIZE && i < SP + 40; i++) {
+          if (i % 8 == 0) printf(" |");
+          printf(" %02x", mem[i]);
+        }
+        printf("\n");
+      }
+
       Word return_target = IP + 9;
       SP -= 8; *(Word*)(mem + SP) = return_target;
       shadow_stack[shadow_stack_len] = return_target; shadow_stack_len++;
       IP = *(Word*)(mem + IP + 1); break; // call
+    }
     case 0xf3:
       IP = *(Word*)(mem + SP); SP += 8;
       shadow_stack_len--; if (shadow_stack[shadow_stack_len] != IP) dump_and_panic("Stack corrupted.");
