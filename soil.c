@@ -192,6 +192,7 @@ void run_single() {
     case 0xa1: REG1 -= REG2; IP += 2; break; // sub
     case 0xa2: REG1 *= REG2; IP += 2; break; // mul
     case 0xa3: REG1 /= REG2; IP += 2; break; // div
+    case 0xa4: REG1 %= REG2; IP += 2; break; // rem
     case 0xb0: REG1 &= REG2; IP += 2; break; // and
     case 0xb1: REG1 |= REG2; IP += 2; break; // or
     case 0xb2: REG1 ^= REG2; IP += 2; break; // xor

@@ -79,7 +79,8 @@ The following instructions are available:
 | a0     | add            | to: reg       | from: reg    | Adds `from` to `to`.                                                                                  |
 | a1     | sub            | to: reg       | from: reg    | Subtracts `from` from `to`.                                                                           |
 | a2     | mul            | to: reg       | from: reg    | Multiplies `from` and `to`. Saves the result in `to`.                                                 |
-| a3     | div            | dividend: reg | divisor: reg | Divides `dividend` by `divisor`. Saves the floored result in `dividend`, the remainder in `divisor`.  |
+| a3     | div            | dividend: reg | divisor: reg | Divides `dividend` by `divisor`. Saves the quotient in `dividend`.                                    |
+| a4     | rem            | dividend: reg | divisor: reg | Divides `dividend` by `divisor`. Saves the remainder in `dividend`.                                   |
 | b0     | and            | to: reg       | from: reg    | Binary-ands `to` and `from`. Saves the result in `to`.                                                |
 | b1     | or             | to: reg       | from: reg    | Binary-ors `to` and `from`. Saves the result in `to`.                                                 |
 | b2     | xor            | to: reg       | from: reg    | Binary-xors `to` and `from`. Saves the result in `to`.                                                |
