@@ -3,8 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MEMORY_SIZE 10000000
-#define TRACE_CALLS 1
+#define MEMORY_SIZE 0x500000
+#define TRACE_CALLS 0
 
 void panic(int exit_code, char* msg) {
   printf("%s\n", msg);
@@ -148,13 +148,13 @@ void init_vm(Byte* bin, int bin_len, int argc, char** argv) {
 
   int cursor = 0;
   #define EAT_BYTE ({ \
-    if (cursor >= len) panic(1, "binary incomplete"); \
+    if (cursor >= bin_len) panic(1, "binary incomplete"); \
     Byte byte = bin[cursor]; \
     cursor++; \
     byte; \
   })
   #define EAT_WORD ({ \
-    if (cursor > len - 8) panic(1, "binary incomplete"); \
+    if (cursor > bin_len - 8) panic(1, "binary incomplete"); \
     Word word; \
     for (int i = 7; i >= 0; i--) word = (word << 8) + bin[cursor + i]; \
     cursor += 8; \
@@ -168,7 +168,7 @@ void init_vm(Byte* bin, int bin_len, int argc, char** argv) {
   CHECK_MAGIC_BYTE('i')
   CHECK_MAGIC_BYTE('l')
 
-  while (cursor < len) {
+  while (cursor < bin_len) {
     int section_type = EAT_BYTE;
     int section_len = EAT_WORD;
     if (section_type == 0) {
