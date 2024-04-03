@@ -89,19 +89,20 @@ void syscall_log() {
 void syscall_create() {
   char filename[REGB];
   for (int i = 0; i < REGB; i++) filename[i] = mem[REGA + i];
-  mem[REGB] = 0;
+  filename[REGB] = 0;
   REGA = (Word)fopen(filename, "w+");
 }
 void syscall_open_reading() {
   char filename[REGB];
   for (int i = 0; i < REGB; i++) filename[i] = mem[REGA + i];
-  mem[REGB] = 0;
+  filename[REGB] = 0;
+  printf("opening filename %s\n", filename);
   REGA = (Word)fopen(filename, "r");
 }
 void syscall_open_writing() {
   char filename[REGB];
   for (int i = 0; i < REGB; i++) filename[i] = mem[REGA + i];
-  mem[REGB] = 0;
+  filename[REGB] = 0;
   REGA = (Word)fopen(filename, "w+");
 }
 void syscall_read() { REGA = fread(mem + REGB, 1, REGC, (FILE*)REGA); }
