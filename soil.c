@@ -115,10 +115,26 @@ void syscall_close() {
   fclose((FILE*)REGA);
 }
 
-void init_vm(Byte* bin, int len) {
+void init_vm(Byte* bin, int bin_len, int argc, char** argv) {
   for (int i = 0; i < 8; i++) reg[i] = 0;
   SP = MEMORY_SIZE;
   mem = malloc(MEMORY_SIZE);
+
+  // Push main function arguments to the stack.
+  SP -= 16 * argc;
+  int slice = SP;
+  for (int i = 0; i < argc; i++) {
+    int len = strlen(argv[i]);
+    SP -= len;
+    for (int j = 0; j < len; j++) mem[SP + j] = argv[i][j];
+    *(Word*)(mem + slice + 16 * i) = SP;
+    *(Word*)(mem + slice + 16 * i + 8) = len;
+  }
+  SP = SP / 8 * 8;
+  SP -= 16;
+  *(Word*)(mem + SP) = slice;
+  *(Word*)(mem + SP + 8) = argc;
+
   for (int i = 0; i < 256; i++) syscall_handlers[i] = syscall_none;
   syscall_handlers[0] = syscall_exit;
   syscall_handlers[1] = syscall_print;
@@ -293,6 +309,6 @@ int main(int argc, char** argv) {
     len++;
   }
 
-  init_vm(bin, len);
+  init_vm(bin, len, argc, argv);
   run();
 }
