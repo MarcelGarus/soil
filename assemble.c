@@ -374,8 +374,9 @@ void main(int argc, char** argv) {
         for (int i = 0; i < str.len; i++) emit_byte(str.bytes[i]);
       }
       else if (strequal(command, str("byte"))) emit_byte(parse_num());
-      else if (strequal(command, str("word")))
+      else if (strequal(command, str("word"))) {
         if (is_num(current)) emit_word(parse_num()); else emit_label_ref(parse_name());
+      }
       else if (strequal(command, str("nop"))) EMIT_OP(0x00)
       else if (strequal(command, str("panic"))) EMIT_OP(0xe0)
       else if (strequal(command, str("move"))) EMIT_OP_REG_REG(0xd0)
@@ -402,6 +403,7 @@ void main(int argc, char** argv) {
       else if (strequal(command, str("sub"))) EMIT_OP_REG_REG(0xa1)
       else if (strequal(command, str("mul"))) EMIT_OP_REG_REG(0xa2)
       else if (strequal(command, str("div"))) EMIT_OP_REG_REG(0xa3)
+      else if (strequal(command, str("rem"))) EMIT_OP_REG_REG(0xa4)
       else if (strequal(command, str("and"))) EMIT_OP_REG_REG(0xb0)
       else if (strequal(command, str("or"))) EMIT_OP_REG_REG(0xb1)
       else if (strequal(command, str("xor"))) EMIT_OP_REG_REG(0xb2)
