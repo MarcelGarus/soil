@@ -60,6 +60,11 @@ void dump_and_panic(char* msg) {
   printf("c  = %8ld %8lx\n", REGC, REGC);
   printf("d  = %8ld %8lx\n", REGD, REGD);
   printf("e  = %8ld %8lx\n", REGE, REGE);
+  printf("\n");
+  FILE* dump = fopen("crash", "w+");
+  fwrite(mem, 1, MEMORY_SIZE, dump);
+  fclose(dump);
+  printf("Memory dumped to crash.\n");
   exit(1);
 }
 
