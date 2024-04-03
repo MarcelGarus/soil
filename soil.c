@@ -130,8 +130,14 @@ void init_vm(Byte* bin, int len) {
   syscall_handlers[8] = syscall_close;
 
   int cursor = 0;
-  #define EAT_BYTE bin[cursor++]
+  #define EAT_BYTE ({ \
+    if (cursor >= len) panic(1, "binary incomplete"); \
+    Byte byte = bin[cursor]; \
+    cursor++; \
+    byte; \
+  })
   #define EAT_WORD ({ \
+    if (cursor > len - 8) panic(1, "binary incomplete"); \
     Word word; \
     for (int i = 7; i >= 0; i--) word = (word << 8) + bin[cursor + i]; \
     cursor += 8; \
