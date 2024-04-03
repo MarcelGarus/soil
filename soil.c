@@ -1,6 +1,6 @@
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <string.h>
 
 #define MEMORY_SIZE 100000
@@ -82,13 +82,27 @@ void syscall_none() { dump_and_panic("Invalid syscall number."); }
 void syscall_exit() { exit(REGA); }
 void syscall_print() { for (int i = 0; i < REGB; i++) printf("%c", mem[REGA + i]); }
 void syscall_log() { for (int i = 0; i < REGB; i++) fprintf(stderr, "%c", mem[REGA + i]); }
-
-Word read_word(Byte* bin, Word pos) {
-  Word word;
-  for (int i = 7; i >= 0; i--)
-    word = (word << 8) + bin[pos + i];
-  return word;
+void syscall_create() {
+  char filename[REGB];
+  for (int i = 0; i < REGB; i++) filename[i] = mem[REGA + i];
+  mem[REGB] = 0;
+  REGA = fopen(filename, "w+");
 }
+void syscall_open_reading() {
+  char filename[REGB];
+  for (int i = 0; i < REGB; i++) filename[i] = mem[REGA + i];
+  mem[REGB] = 0;
+  REGA = fopen(filename, "r");
+}
+void syscall_open_writing() {
+  char filename[REGB];
+  for (int i = 0; i < REGB; i++) filename[i] = mem[REGA + i];
+  mem[REGB] = 0;
+  REGA = fopen(filename, "w+");
+}
+void syscall_read() { fread(mem + REGB, 1, REGC, REGA); }
+void syscall_write() { fwrite(mem + REGB, 1, REGC, REGA); }
+void syscall_close() { fclose(REGA); }
 
 void init_vm(Byte* bin, int len) {
   for (int i = 0; i < 8; i++) reg[i] = 0;
@@ -98,6 +112,12 @@ void init_vm(Byte* bin, int len) {
   syscall_handlers[0] = syscall_exit;
   syscall_handlers[1] = syscall_print;
   syscall_handlers[2] = syscall_log;
+  syscall_handlers[3] = syscall_create;
+  syscall_handlers[4] = syscall_open_reading;
+  syscall_handlers[5] = syscall_open_writing;
+  syscall_handlers[6] = syscall_read;
+  syscall_handlers[7] = syscall_write;
+  syscall_handlers[8] = syscall_close;
 
   int cursor = 0;
   #define EAT_BYTE bin[cursor++]
