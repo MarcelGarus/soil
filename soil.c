@@ -216,19 +216,20 @@ void run_single() {
     case 0xd1: REG1 = *(Word*)(mem + IP + 2); IP += 10; break; // movei
     case 0xd2: REG1 = mem[IP + 2]; IP += 3; break; // moveib
     case 0xd3: { // load
-      if (REG2 >= MEMORY_SIZE) dump_and_panic("segmentation fault");
+      printf("accessing %lx\n", REG1);
+      if (REG1 >= MEMORY_SIZE) dump_and_panic("segmentation fault");
       REG1 = *(Word*)(mem + REG2); IP += 2; break;
     }
     case 0xd4: { // loadb
-      if (REG2 >= MEMORY_SIZE) dump_and_panic("segmentation fault");
+      if (REG1 >= MEMORY_SIZE) dump_and_panic("segmentation fault");
       REG1 = mem[REG2]; IP += 2; break;
     }
     case 0xd5: { // store
-      if (REG2 >= MEMORY_SIZE) dump_and_panic("segmentation fault");
+      if (REG1 >= MEMORY_SIZE) dump_and_panic("segmentation fault");
       *(Word*)(mem + REG1) = REG2; IP += 2; break;
     }
     case 0xd6: { // storeb
-      if (REG2 >= MEMORY_SIZE) dump_and_panic("segmentation fault");
+      if (REG1 >= MEMORY_SIZE) dump_and_panic("segmentation fault");
       mem[REG1] = REG2; IP += 2; break;
     }
     case 0xd7: SP -= 8; *(Word*)(mem + SP) = REG1; IP += 2; break; // push
