@@ -155,6 +155,7 @@ void init_vm(Byte* bin, int len) {
     int section_len = EAT_WORD;
     if (section_type == 0) {
       // machine code
+      if (section_len >= MEMORY_SIZE) panic(1, "machine code too big");
       for (int j = 0; j < section_len; j++) mem[j] = EAT_BYTE;
     } else if (section_type == 3) {
       // debug info
