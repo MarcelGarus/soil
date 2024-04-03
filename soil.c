@@ -104,9 +104,15 @@ void syscall_open_writing() {
   mem[REGB] = 0;
   REGA = (Word)fopen(filename, "w+");
 }
-void syscall_read() { fread(mem + REGB, 1, REGC, REGA); }
-void syscall_write() { fwrite(mem + REGB, 1, REGC, REGA); }
-void syscall_close() { fclose(REGA); }
+void syscall_read() { REGA = fread(mem + REGB, 1, REGC, (FILE*)REGA); }
+void syscall_write() {
+  // TODO: assert that this worked
+  fwrite(mem + REGB, 1, REGC, (FILE*)REGA);
+}
+void syscall_close() {
+  // TODO: assert that this worked
+  fclose((FILE*)REGA);
+}
 
 void init_vm(Byte* bin, int len) {
   for (int i = 0; i < 8; i++) reg[i] = 0;
