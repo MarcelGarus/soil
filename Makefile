@@ -1,4 +1,4 @@
-all: assemble soil
+all: assemble soil soil-c
 
 assemble: assemble.c
 	gcc assemble.c -o assemble
