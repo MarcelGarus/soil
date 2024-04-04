@@ -8,7 +8,7 @@ soil: soil.s
 	chmod a+x soil
 
 soil-c: soil.c
-	gcc soil.c -o soil-c
+	gcc soil.c -O3 -o soil-c
 
 run-hello:
 	cat hello.recipe | ./assemble | ./soil
