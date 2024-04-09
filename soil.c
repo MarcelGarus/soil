@@ -223,7 +223,6 @@ void run_single() {
     case 0xd1: REG1 = *(Word*)(byte_code + ip + 2); ip += 10; break; // movei
     case 0xd2: REG1 = byte_code[ip + 2]; ip += 3; break; // moveib
     case 0xd3: { // load
-      // printf("accessing %lx\n", REG1);
       if (REG2 >= MEMORY_SIZE) dump_and_panic("segmentation fault");
       REG1 = *(Word*)(mem + REG2); ip += 2; break;
     }
