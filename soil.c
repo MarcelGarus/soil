@@ -14,20 +14,23 @@ void panic(int exit_code, char* msg) {
 typedef uint8_t Byte;
 typedef uint64_t Word;
 
-Word reg[8]; // ip, sp, st, a, b, c, d, e
-#define IP reg[0]
-#define SP reg[1]
-#define ST reg[2]
-#define REGA reg[3]
-#define REGB reg[4]
-#define REGC reg[5]
-#define REGD reg[6]
-#define REGE reg[7]
+Word reg[8]; // sp, st, a, b, c, d, e, f
+#define SP reg[0]
+#define ST reg[1]
+#define REGA reg[2]
+#define REGB reg[3]
+#define REGC reg[4]
+#define REGD reg[5]
+#define REGE reg[6]
+#define REGF reg[7]
+
+Byte* byte_code;
+Word ip = 0;
 
 Byte* mem;
 
-Word shadow_stack[1024];
-Word shadow_stack_len = 0;
+Word call_stack[1024];
+Word call_stack_len = 0;
 
 void (*syscall_handlers[256])();
 
@@ -58,11 +61,10 @@ void dump_and_panic(char* msg) {
   printf("%s\n", msg);
   printf("\n");
   printf("Stack:\n");
-  for (int i = 0; i < shadow_stack_len; i++) print_stack_entry(shadow_stack[i]);
-  print_stack_entry(IP);
+  for (int i = 0; i < call_stack_len; i++) print_stack_entry(call_stack[i]);
+  print_stack_entry(ip);
   printf("\n");
   printf("Registers:\n");
-  printf("ip = %8ld %8lx\n", IP, IP);
   printf("sp = %8ld %8lx\n", SP, SP);
   printf("st = %8ld %8lx\n", ST, ST);
   printf("a  = %8ld %8lx\n", REGA, REGA);
@@ -70,6 +72,7 @@ void dump_and_panic(char* msg) {
   printf("c  = %8ld %8lx\n", REGC, REGC);
   printf("d  = %8ld %8lx\n", REGD, REGD);
   printf("e  = %8ld %8lx\n", REGE, REGE);
+  printf("f  = %8ld %8lx\n", REGF, REGF);
   printf("\n");
   FILE* dump = fopen("crash", "w+");
   fwrite(mem, 1, MEMORY_SIZE, dump);
@@ -79,7 +82,7 @@ void dump_and_panic(char* msg) {
 }
 
 void syscall_none() { dump_and_panic("invalid syscall number"); }
-void syscall_exit() { exit(REGA); }
+void syscall_exit() { printf("exited with %ld\n", REGA); exit(REGA); }
 void syscall_print() {
   for (int i = 0; i < REGB; i++) printf("%c", mem[REGA + i]);
 }
@@ -172,8 +175,12 @@ void init_vm(Byte* bin, int bin_len, int argc, char** argv) {
     int section_type = EAT_BYTE;
     int section_len = EAT_WORD;
     if (section_type == 0) {
-      // machine code
-      if (section_len >= MEMORY_SIZE) panic(1, "machine code too big");
+      // byte code
+      byte_code = malloc(section_len);
+      for (int j = 0; j < section_len; j++) byte_code[j] = EAT_BYTE;
+    } else if (section_type == 1) {
+      // initial memory
+      if (section_len >= MEMORY_SIZE) panic(1, "initial memory too big");
       for (int j = 0; j < section_len; j++) mem[j] = EAT_BYTE;
     } else if (section_type == 3) {
       // debug info
@@ -204,47 +211,47 @@ void dump_reg() {
 typedef Byte Reg; // 4 bits would actually be enough, but meh
 
 void run_single() {
-  #define REG1 reg[mem[IP + 1] & 0x0f]
-  #define REG2 reg[mem[IP + 1] >> 4]
+  #define REG1 reg[byte_code[ip + 1] & 0x0f]
+  #define REG2 reg[byte_code[ip + 1] >> 4]
 
-  Byte opcode = mem[IP];
-  // printf("ip %lx has opcode %x\n", IP, opcode);
+  Byte opcode = byte_code[ip];
+  // printf("ip %lx has opcode %x\n", ip, opcode);
   switch (opcode) {
-    case 0x00: dump_and_panic("halted"); IP += 1; break; // nop
+    case 0x00: dump_and_panic("halted"); ip += 1; break; // nop
     case 0xe0: dump_and_panic("panicked"); return; // panic
-    case 0xd0: REG1 = REG2; IP += 2; break; // move
-    case 0xd1: REG1 = *(Word*)(mem + IP + 2); IP += 10; break; // movei
-    case 0xd2: REG1 = mem[IP + 2]; IP += 3; break; // moveib
+    case 0xd0: REG1 = REG2; ip += 2; break; // move
+    case 0xd1: REG1 = *(Word*)(byte_code + ip + 2); ip += 10; break; // movei
+    case 0xd2: REG1 = byte_code[ip + 2]; ip += 3; break; // moveib
     case 0xd3: { // load
       // printf("accessing %lx\n", REG1);
       if (REG2 >= MEMORY_SIZE) dump_and_panic("segmentation fault");
-      REG1 = *(Word*)(mem + REG2); IP += 2; break;
+      REG1 = *(Word*)(mem + REG2); ip += 2; break;
     }
     case 0xd4: { // loadb
       if (REG2 >= MEMORY_SIZE) dump_and_panic("segmentation fault");
-      REG1 = mem[REG2]; IP += 2; break;
+      REG1 = mem[REG2]; ip += 2; break;
     }
     case 0xd5: { // store
       if (REG1 >= MEMORY_SIZE) dump_and_panic("segmentation fault");
-      *(Word*)(mem + REG1) = REG2; IP += 2; break;
+      *(Word*)(mem + REG1) = REG2; ip += 2; break;
     }
     case 0xd6: { // storeb
       if (REG1 >= MEMORY_SIZE) dump_and_panic("segmentation fault");
-      mem[REG1] = REG2; IP += 2; break;
+      mem[REG1] = REG2; ip += 2; break;
     }
-    case 0xd7: SP -= 8; *(Word*)(mem + SP) = REG1; IP += 2; break; // push
-    case 0xd8: REG1 = *(Word*)(mem + SP); SP += 8; IP += 2; break; // pop
-    case 0xf0: IP = *(Word*)(mem + IP + 1); break; // jump
+    case 0xd7: SP -= 8; *(Word*)(mem + SP) = REG1; ip += 2; break; // push
+    case 0xd8: REG1 = *(Word*)(mem + SP); SP += 8; ip += 2; break; // pop
+    case 0xf0: ip = *(Word*)(byte_code + ip + 1); break; // jump
     case 0xf1: { // cjump
-      if (ST != 0) IP = *(Word*)(mem + IP + 1); else IP += 9; break;
+      if (ST != 0) ip = *(Word*)(byte_code + ip + 1); else ip += 9; break;
     }
     case 0xf2: {
       if (TRACE_CALLS) {
-        for (int i = 0; i < shadow_stack_len; i++)
+        for (int i = 0; i < call_stack_len; i++)
           printf(" ");
-        LabelAndPos lap = find_label(*(Word*)(mem + IP + 1));
+        LabelAndPos lap = find_label(*(Word*)(byte_code + ip + 1));
         for (int i = 0; i < lap.len; i++) printf("%c", lap.label[i]);
-        for (int i = shadow_stack_len + lap.len; i < 50; i++) printf(" ");
+        for (int i = call_stack_len + lap.len; i < 50; i++) printf(" ");
         for (int i = SP; i < MEMORY_SIZE && i < SP + 40; i++) {
           if (i % 8 == 0) printf(" |");
           printf(" %02x", mem[i]);
@@ -252,34 +259,34 @@ void run_single() {
         printf("\n");
       }
 
-      Word return_target = IP + 9;
+      Word return_target = ip + 9;
       SP -= 8; *(Word*)(mem + SP) = return_target;
-      shadow_stack[shadow_stack_len] = return_target; shadow_stack_len++;
-      IP = *(Word*)(mem + IP + 1); break; // call
+      call_stack[call_stack_len] = return_target; call_stack_len++;
+      ip = *(Word*)(byte_code + ip + 1); break; // call
     }
     case 0xf3: { // ret
-      IP = *(Word*)(mem + SP); SP += 8;
-      shadow_stack_len--;
-      if (shadow_stack[shadow_stack_len] != IP)
+      ip = *(Word*)(mem + SP); SP += 8;
+      call_stack_len--;
+      if (call_stack[call_stack_len] != ip)
         dump_and_panic("stack corrupted");
       break;
     }
-    case 0xf4: syscall_handlers[mem[IP + 1]](); IP += 2; break; // syscall
-    case 0xc0: ST = REG1 - REG2; IP += 2; break; // cmp
-    case 0xc1: ST = ST == 0 ? 1 : 0; IP += 1; break; // isequal
-    case 0xc2: ST = (int64_t)ST < 0 ? 1 : 0; IP += 1; break; // isless
-    case 0xc3: ST = (int64_t)ST > 0 ? 1 : 0; IP += 1; break; // isgreater
-    case 0xc4: ST = (int64_t)ST <= 0 ? 1 : 0; IP += 1; break; // islessequal
-    case 0xc5: ST = (int64_t)ST >= 0 ? 1 : 0; IP += 1; break; // isgreaterequal
-    case 0xa0: REG1 += REG2; IP += 2; break; // add
-    case 0xa1: REG1 -= REG2; IP += 2; break; // sub
-    case 0xa2: REG1 *= REG2; IP += 2; break; // mul
-    case 0xa3: REG1 /= REG2; IP += 2; break; // div
-    case 0xa4: REG1 %= REG2; IP += 2; break; // rem
-    case 0xb0: REG1 &= REG2; IP += 2; break; // and
-    case 0xb1: REG1 |= REG2; IP += 2; break; // or
-    case 0xb2: REG1 ^= REG2; IP += 2; break; // xor
-    case 0xb3: REG1 = ~REG1; IP += 2; break; // negate
+    case 0xf4: syscall_handlers[byte_code[ip + 1]](); ip += 2; break; // syscall
+    case 0xc0: ST = REG1 - REG2; ip += 2; break; // cmp
+    case 0xc1: ST = ST == 0 ? 1 : 0; ip += 1; break; // isequal
+    case 0xc2: ST = (int64_t)ST < 0 ? 1 : 0; ip += 1; break; // isless
+    case 0xc3: ST = (int64_t)ST > 0 ? 1 : 0; ip += 1; break; // isgreater
+    case 0xc4: ST = (int64_t)ST <= 0 ? 1 : 0; ip += 1; break; // islessequal
+    case 0xc5: ST = (int64_t)ST >= 0 ? 1 : 0; ip += 1; break; // isgreaterequal
+    case 0xa0: REG1 += REG2; ip += 2; break; // add
+    case 0xa1: REG1 -= REG2; ip += 2; break; // sub
+    case 0xa2: REG1 *= REG2; ip += 2; break; // mul
+    case 0xa3: REG1 /= REG2; ip += 2; break; // div
+    case 0xa4: REG1 %= REG2; ip += 2; break; // rem
+    case 0xb0: REG1 &= REG2; ip += 2; break; // and
+    case 0xb1: REG1 |= REG2; ip += 2; break; // or
+    case 0xb2: REG1 ^= REG2; ip += 2; break; // xor
+    case 0xb3: REG1 = ~REG1; ip += 2; break; // negate
     default: dump_and_panic("invalid instruction"); return;
   }
 }
