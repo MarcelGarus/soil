@@ -2,3 +2,4 @@
 .assemble
 .soil
 .soil-c
+rust/target

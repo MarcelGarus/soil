@@ -1,6 +1,6 @@
 # Soil
 
-Soil is a bytecode interpreter that is designed to be easy to implement on typical machines.
+Soil is a virtual machine specification that is designed to be easy to implement on typical machines.
 
 ![Soil](Soil.png)
 
@@ -18,11 +18,21 @@ cat hello.recipe | ./assemble | ./soil
 
 ## The Anatomy of Soil
 
+Soil consists of three parts of state: registers, memory, and byte code.
+
+Soil is not a van Neumann machine – byte code and memory live in separate worlds.
+Byte code can only read/write the memory, not byte code itself.
+You can't reflect on the byte code itself, for example, to store pointers to instructions.
+This gives Soil implementations the freedom to JIT-compile the byte code on startup.
+
+Soil binaries are files that contain byte code and initial memory.
+
+### Registers
+
 Soil has 8 registers, all of which hold 64 bits.
 
 | name | description              |
 | ---- | ------------------------ |
-| `ip` | instruction pointer      |
 | `sp` | stack pointer            |
 | `st` | status register          |
 | `a`  | general-purpose register |
@@ -30,31 +40,30 @@ Soil has 8 registers, all of which hold 64 bits.
 | `c`  | general-purpose register |
 | `d`  | general-purpose register |
 | `e`  | general-purpose register |
+| `f`  | general-purpose register |
+
+Initially, `sp` is the memory size.
+All other registers are zero.
+
+### Memory
 
 It also has byte-addressed memory.
 For now, the size of the memory is hardcoded to something big.
 
-Upon startup, Soil does the following:
+### Byte Code
 
-1. Load the machine code into memory at address 0
-2. Set initial register contents
-   1. the instruction pointer `ip` to 0, the address of the machine code
-   2. the stack pointer `sp` to the last memory address
-   3. all other registers to zero
-3. Run the code
-   1. Parse the instruction that `ip` points to
-   2. Run it
-   3. Repeat
+Byte code consists of a sequence of instructions and label definitions.
 
-## Instructions
+Soil runs the instructions in sequence, starting from the first.
+Some instructions alter control flow by jumping to other instructions.
 
-Machine code consists of a sequence of instructions.
 All instructions start with a byte containing the opcode, followed by the arguments to the operation.
 The following instructions are available:
 
 | opcode | mnemonic       | arg 0         | arg 1        | description                                                                                           |
 | ------ | -------------- | ------------- | ------------ | ----------------------------------------------------------------------------------------------------- |
 | 00     | nop            | -             | -            | Does nothing.                                                                                         |
+| 01     | label          |               |              | Defines a new label.                                                                                  |
 | e0     | panic          | -             | -            | Panics.                                                                                               |
 | d0     | move           | to: reg       | from: reg    | Sets `to` to `from`.                                                                                  |
 | d1     | movei          | to: reg       | value: word  | Sets `to` to `value`.                                                                                 |
@@ -65,10 +74,10 @@ The following instructions are available:
 | d6     | storeb         | to: reg       | from: reg    | Interprets `to` as an address and sets the 8 bits at that address in memory to `from`.                |
 | d7     | push           | reg: reg      | -            | Decreases `sp` by 8, then runs `store sp reg`.                                                        |
 | d8     | pop            | reg: reg      | -            | Runs `load reg sp`, then increases `sp` by 8.                                                         |
-| f0     | jump           | to: word      | -            | Runs `loadi ip to`.                                                                                   |
+| f0     | jump           | to: word      | -            | Continues executing at the `to`th label (zero-indexed).                                               |
 | f1     | cjump          | to: word      | -            | Runs `jump to` if `st` is not 0.                                                                      |
-| f2     | call           | target: word  | -            | Runs `push ip`, `jump target`.                                                                        |
-| f3     | ret            | -             | -            | Runs `load ip`, then increases `sp` by 8.                                                             |
+| f2     | call           | target: word  | -            | Runs `jump target`. Saves the formerly next instruction on an internal stack so that `ret` returns.   |
+| f3     | ret            | -             | -            | Returns to the instruction after the matching `call`.                                                 |
 | f4     | syscall        | number: byte  | -            | Performs a syscall. Behavior depends on the syscall. The syscall can access all registers and memory. |
 | c0     | cmp            | left: reg     | right: reg   | Saves `left` - `right` in `st`.                                                                       |
 | c1     | isequal        | -             | -            | If `st` is 0, sets `st` to 1, otherwise to 0.                                                         |
@@ -88,22 +97,22 @@ The following instructions are available:
 
 ## Binaries
 
-Binary files are stuctured like this:
+Soil binaries are stuctured like this:
 
 - magic bytes `soil` (4 bytes)
 - the only thing following are sections, each of which has:
   - type (1 byte)
   - length (8 byte), useful for skipping sections
   - content (length parsed above)
-- machine code
+- byte code
   - section type `0`
   - length (8 bytes)
-  - machine code (length parsed above)
-- name
+  - byte code (length parsed above)
+- initial memory
   - section type `1`
   - length (8 bytes)
   - content (length parsed above)
-- description
+- name
   - section type `2`
   - length (8 bytes)
   - content (length parsed above)
@@ -114,3 +123,7 @@ Binary files are stuctured like this:
     - position in the machine code (8 bytes)
     - label length (8 bytes)
     - label (length parsed above)
+- description
+  - section type `4`
+  - length (8 bytes)
+  - content (length parsed above)
