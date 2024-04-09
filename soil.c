@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MEMORY_SIZE 0x500000
+#define MEMORY_SIZE 0x1000000
 #define TRACE_CALLS 0
 
 void panic(int exit_code, char* msg) {
@@ -216,12 +216,12 @@ void run_single() {
     case 0xd1: REG1 = *(Word*)(mem + IP + 2); IP += 10; break; // movei
     case 0xd2: REG1 = mem[IP + 2]; IP += 3; break; // moveib
     case 0xd3: { // load
-      printf("accessing %lx\n", REG1);
-      if (REG1 >= MEMORY_SIZE) dump_and_panic("segmentation fault");
+      // printf("accessing %lx\n", REG1);
+      if (REG2 >= MEMORY_SIZE) dump_and_panic("segmentation fault");
       REG1 = *(Word*)(mem + REG2); IP += 2; break;
     }
     case 0xd4: { // loadb
-      if (REG1 >= MEMORY_SIZE) dump_and_panic("segmentation fault");
+      if (REG2 >= MEMORY_SIZE) dump_and_panic("segmentation fault");
       REG1 = mem[REG2]; IP += 2; break;
     }
     case 0xd5: { // store
