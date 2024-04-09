@@ -451,7 +451,7 @@ run:
 .syscall:
   mov rax, 0
   mov al, [rsp + 1]
-  mov rax, [syscall_handlers + rax * 8]
+  mov rax, [syscalls.table + rax * 8]
   call rax
   advance_ip_by 2
   end_of_instruction
@@ -576,28 +576,62 @@ main:
   syscall
 
 ; Syscalls
-; =======
+; ========
 
-syscall_exit:
-  mov rax, 60 ; exit syscall
-  mov rdi, [rbp + r11] ; status code (from the a register)
-  syscall
+syscalls:
+  .table:
+    dq .exit         ; 0
+    dq .print        ; 1
+    dq .log          ; 2
+    dq .create       ; 3
+    dq .open_reading ; 4
+    dq .open_writing ; 5
+    dq .read         ; 6
+    dq .write        ; 7
+    dq .close        ; 8
+    dq 248 dup .unknown
 
-syscall_print:
-  mov rax, 1 ; write syscall
-  mov rdi, 1 ; stdout
-  lea rsi, [rbp + r11] ; pointer to string (from the a register)
-  mov rdx, r12 ; length of the string (from the b register)
-  syscall
-  ret
+  .unknown:
+    panic str_unknown_syscall, str_unknown_syscall.len
 
-syscall_log:
-  mov rax, 1 ; write syscall
-  mov rdi, 2 ; stderr
-  lea rsi, [rbp + r11] ; pointer to message (from the a register)
-  mov rdx, r12 ; length of the message (from the b register)
-  syscall
-  ret
+  .exit:
+    mov rax, 60 ; exit syscall
+    mov rdi, [rbp + r11] ; status code (from the a register)
+    syscall
+
+  .print:
+    mov rax, 1 ; write syscall
+    mov rdi, 1 ; stdout
+    lea rsi, [rbp + r11] ; pointer to string (from the a register)
+    mov rdx, r12 ; length of the string (from the b register)
+    syscall
+    ret
+
+  .log:
+    mov rax, 1 ; write syscall
+    mov rdi, 2 ; stderr
+    lea rsi, [rbp + r11] ; pointer to message (from the a register)
+    mov rdx, r12 ; length of the message (from the b register)
+    syscall
+    ret
+
+  .create:
+    todo
+
+  .open_reading:
+    todo
+
+  .open_writing:
+    todo
+
+  .read:
+    todo
+
+  .write:
+    todo
+
+  .close:
+    todo
 
 segment readable writable
 
@@ -615,6 +649,8 @@ str_todo: db "Todo", 0xa
   .len = ($ - str_todo)
 str_unknown_opcode: db "Unknown opcode", 0xa
   .len = ($ - str_unknown_opcode)
+str_unknown_syscall: db "Unknown syscall", 0xa
+  .len = ($ - str_unknown_syscall)
 
 binary:
   dq 8
@@ -622,9 +658,3 @@ binary:
   .cap: dq 0
 memory:
   dq 8
-
-syscall_handlers:
-  dq syscall_exit
-  dq syscall_print
-  dq syscall_log
-  dq 253 dup 0
