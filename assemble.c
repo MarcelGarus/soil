@@ -154,10 +154,9 @@ Word parse_num(void) {
   return parse_digits(10);
 }
 
-typedef enum { reg_ip, reg_sp, reg_st, reg_a, reg_b, reg_c, reg_d, reg_e } Reg;
+typedef enum { reg_sp, reg_st, reg_a, reg_b, reg_c, reg_d, reg_e, reg_f } Reg;
 Reg parse_reg(void) {
   Str n = parse_name();
-  if (strequal(n, str("ip"))) return reg_ip;
   if (strequal(n, str("sp"))) return reg_sp;
   if (strequal(n, str("st"))) return reg_st;
   if (strequal(n, str("a"))) return reg_a;
@@ -165,19 +164,20 @@ Reg parse_reg(void) {
   if (strequal(n, str("c"))) return reg_c;
   if (strequal(n, str("d"))) return reg_d;
   if (strequal(n, str("e"))) return reg_e;
+  if (strequal(n, str("f"))) return reg_f;
   panic("Expected a register.");
 }
 
 Byte to_bits(Reg reg) {
   switch (reg) {
-    case reg_ip: return 0b0000;
-    case reg_sp: return 0b0001;
-    case reg_st: return 0b0010;
-    case reg_a: return 0b0011;
-    case reg_b: return 0b0100;
-    case reg_c: return 0b0101;
-    case reg_d: return 0b0110;
-    case reg_e: return 0b0111;
+    case reg_sp: return 0b0000;
+    case reg_st: return 0b0001;
+    case reg_a: return 0b0010;
+    case reg_b: return 0b0011;
+    case reg_c: return 0b0100;
+    case reg_d: return 0b0101;
+    case reg_e: return 0b0110;
+    case reg_f: return 0b0111;
     default: panic("Invalid register.");
   }
 }
