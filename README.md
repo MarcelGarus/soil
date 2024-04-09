@@ -63,7 +63,6 @@ The following instructions are available:
 | opcode | mnemonic       | arg 0         | arg 1        | description                                                                                           |
 | ------ | -------------- | ------------- | ------------ | ----------------------------------------------------------------------------------------------------- |
 | 00     | nop            | -             | -            | Does nothing.                                                                                         |
-| 01     | label          |               |              | Defines a new label.                                                                                  |
 | e0     | panic          | -             | -            | Panics.                                                                                               |
 | d0     | move           | to: reg       | from: reg    | Sets `to` to `from`.                                                                                  |
 | d1     | movei          | to: reg       | value: word  | Sets `to` to `value`.                                                                                 |
