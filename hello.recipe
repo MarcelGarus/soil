@@ -5,4 +5,6 @@ moveib b 14
 syscall 1 | print
 syscall 0 | exit
 
+@data
+
 msg: str "Hello, world!" byte 10
