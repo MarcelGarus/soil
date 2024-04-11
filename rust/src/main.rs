@@ -1,13 +1,11 @@
 mod binary;
 mod utils;
-mod interpreter;
-mod jit;
+// mod interpreter;
+mod compile;
 
 use std::io::Read;
 use binary::Binary;
-use cranelift::codegen::isa::TargetIsa;
-use interpreter::Vm;
-use jit::compile;
+// use interpreter::Vm;
 
 fn main() {
     let mut bytes = vec![];
@@ -15,9 +13,10 @@ fn main() {
 
     let binary = Binary::parse(&bytes);
 
-    let args: Vec<_> = std::env::args().collect();
+    // let args: Vec<_> = std::env::args().collect();
 
-    compile(binary);
+    let asm = compile::compile(binary);
+    println!("{}", asm);
 
     // let mut vm = Vm::init(binary);
     // vm.run();
