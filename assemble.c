@@ -241,7 +241,7 @@ Word find_label(Str label) {
 // The output.
 
 Bytes output;
-Pos start_of_machine_code = 0; // labels are relative to this
+Pos start_of_section = 0; // labels are relative to this
 
 // Patches.
 
@@ -322,7 +322,7 @@ void define_label(Str label) {
   label = globalize_label(label);
 
   last_label = label;
-  Pos pos = output.len - start_of_machine_code;
+  Pos pos = output.len - start_of_section;
   push_label(label, pos);
 }
 
@@ -335,12 +335,12 @@ void main(int argc, char** argv) {
 
   emit_str(str("soil"));
 
-  // Machine code section
-  emit_byte(0);  // type: machine code
-  Pos pointer_to_machine_code_section_len = output.len;
-  emit_word(0); // len of machine code
+  // Byte code section
+  emit_byte(0);  // type: byte code
+  Pos pointer_to_byte_code_section_len = output.len;
+  emit_word(0); // len of byte code
 
-  start_of_machine_code = output.len;
+  start_of_section = output.len;
   while (true) {
     consume_whitespace();
     if (is_at_end()) break;
@@ -362,22 +362,12 @@ void main(int argc, char** argv) {
       #define EMIT_OP_REG_WORD(opcode) { emit_byte(opcode); \
         emit_reg(parse_reg()); consume_whitespace(); \
         if (is_num(current)) emit_word(parse_num()); else emit_label_ref(parse_name()); }
-      #define EMIT_OP_REG_LABEL(opcode) { emit_byte(opcode); \
-        emit_reg(parse_reg()); emit_label_ref(parse_name()); }
       #define EMIT_OP_BYTE(opcode) { emit_byte(opcode); emit_byte(parse_num()); }
       #define EMIT_OP_WORD(opcode) { emit_byte(opcode); consume_whitespace(); \
         if (is_num(current)) emit_word(parse_num()); else emit_label_ref(parse_name()); }
       #define EMIT_OP_LABEL(opcode) { emit_byte(opcode); emit_label_ref(parse_name()); }
 
-      if (strequal(command, str("str"))) {
-        Str str = parse_str();
-        for (int i = 0; i < str.len; i++) emit_byte(str.bytes[i]);
-      }
-      else if (strequal(command, str("byte"))) emit_byte(parse_num());
-      else if (strequal(command, str("word"))) {
-        if (is_num(current)) emit_word(parse_num()); else emit_label_ref(parse_name());
-      }
-      else if (strequal(command, str("nop"))) EMIT_OP(0x00)
+      if (strequal(command, str("nop"))) EMIT_OP(0x00)
       else if (strequal(command, str("panic"))) EMIT_OP(0xe0)
       else if (strequal(command, str("move"))) EMIT_OP_REG_REG(0xd0)
       else if (strequal(command, str("movei"))) EMIT_OP_REG_WORD(0xd1)
@@ -408,6 +398,7 @@ void main(int argc, char** argv) {
       else if (strequal(command, str("or"))) EMIT_OP_REG_REG(0xb1)
       else if (strequal(command, str("xor"))) EMIT_OP_REG_REG(0xb2)
       else if (strequal(command, str("negate"))) EMIT_OP_REG(0xb3)
+      else if (strequal(command, str("@data"))) break;
       else {
         fprintf(stderr, "Command is \"");
         for (int i = 0; i < command.len; i++)
@@ -418,12 +409,53 @@ void main(int argc, char** argv) {
     }
   }
 
+  int num_labels_in_byte_code_section = labels.len;
+
+  int byte_code_len = output.len - start_of_section;
+  overwrite_word(pointer_to_byte_code_section_len, byte_code_len);
+
+  // Initial memory section
+  emit_byte(1);  // type: initial memory
+  Pos pointer_to_memory_section_len = output.len;
+  emit_word(0);  // len of initial memory
+
+  start_of_section = output.len;
+  while (true) {
+    consume_whitespace();
+    if (is_at_end()) break;
+
+    Str name = parse_name();
+
+    bool is_label = consume_prefix(':');
+    if (is_label) {
+      define_label(name);
+    } else {
+      Str command = name;
+
+      if (strequal(command, str("str"))) {
+        Str str = parse_str();
+        for (int i = 0; i < str.len; i++) emit_byte(str.bytes[i]);
+      }
+      else if (strequal(command, str("byte"))) emit_byte(parse_num());
+      else if (strequal(command, str("word"))) {
+        if (is_num(current)) emit_word(parse_num()); else emit_label_ref(parse_name());
+      } else {
+        fprintf(stderr, "Command is \"");
+        for (int i = 0; i < command.len; i++)
+          fprintf(stderr, "%c", command.bytes[i]);
+        fprintf(stderr, "\".\n");
+        panic("Unknown data command.");
+      }
+    }
+  }
+
   if (!is_at_end()) panic("Didn't parse the entire input.");
 
   fix_patches();
+  labels.len = num_labels_in_byte_code_section;
 
-  int machine_code_len = output.len - start_of_machine_code;
-  overwrite_word(pointer_to_machine_code_section_len, machine_code_len);
+  int memory_len = output.len - start_of_section;
+  overwrite_word(pointer_to_memory_section_len, memory_len);
 
   emit_byte(3);  // type: debug info
   Pos pointer_to_debug_info_len = output.len;
