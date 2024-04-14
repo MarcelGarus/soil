@@ -5,15 +5,17 @@ Soil is a virtual machine specification that is designed to be easy to implement
 ![Soil](Soil.png)
 
 To get started, run `make`.
-This creates two executables:
+This creates some executables:
 
 - `assemble`: can turn `.recipe` files (Soil assembly) into `.soil` files (Soil binaries).
-- `soil`: can run `.soil` files
+- `soil-c`: Reference implementation of a Soil interpreter written in C. This is slow.
+- `soil-rust-compiler`: Implementation of a Soil compiler to FASM written in Rust.
+- `soil-asm`: **Not up to date to this spec!** Implementation of a Soil interpreter written in Assembly. This is slow.
 
 For example, to run the `hello.recipe`, you can run this:
 
 ```sh
-cat hello.recipe | ./assemble | ./soil
+cat hello.recipe | ./assemble | ./soil-c
 ```
 
 ## The Anatomy of Soil
