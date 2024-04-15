@@ -1,24 +1,10 @@
 | Fibonacci
 
-moveib a 35
-call fib
-syscall 0
-
-| Returns the a'th Fibonacci number.
-fib:
-moveib d 1
-moveib e 2
-fib-rec:
-cmp a e islessequal cjump .small_enough
-push a
-sub a d call fib | fib(a - 1)
-pop b
-push a
+moveib a 1
+moveib b 1
+start:
+move c a
+add c b
 move a b
-sub a e call fib | fib(a - 2)
-pop b
-add a b
-ret
-.small_enough:
-move a d
-ret
+move b c
+jump start
