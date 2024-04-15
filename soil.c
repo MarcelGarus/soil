@@ -285,7 +285,7 @@ void run_single() {
     case 0xb0: REG1 &= REG2; ip += 2; break; // and
     case 0xb1: REG1 |= REG2; ip += 2; break; // or
     case 0xb2: REG1 ^= REG2; ip += 2; break; // xor
-    case 0xb3: REG1 = ~REG1; ip += 2; break; // negate
+    case 0xb3: REG1 = ~REG1; ip += 2; break; // not
     default: dump_and_panic("invalid instruction"); return;
   }
 }

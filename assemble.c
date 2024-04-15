@@ -397,7 +397,7 @@ void main(int argc, char** argv) {
       else if (strequal(command, str("and"))) EMIT_OP_REG_REG(0xb0)
       else if (strequal(command, str("or"))) EMIT_OP_REG_REG(0xb1)
       else if (strequal(command, str("xor"))) EMIT_OP_REG_REG(0xb2)
-      else if (strequal(command, str("negate"))) EMIT_OP_REG(0xb3)
+      else if (strequal(command, str("not"))) EMIT_OP_REG(0xb3)
       else if (strequal(command, str("@data"))) break;
       else {
         fprintf(stderr, "Command is \"");

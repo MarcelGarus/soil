@@ -94,7 +94,7 @@ The following instructions are available:
 | b0     | and            | to: reg       | from: reg    | Binary-ands `to` and `from`. Saves the result in `to`.                                                |
 | b1     | or             | to: reg       | from: reg    | Binary-ors `to` and `from`. Saves the result in `to`.                                                 |
 | b2     | xor            | to: reg       | from: reg    | Binary-xors `to` and `from`. Saves the result in `to`.                                                |
-| b3     | negate         | to: reg       | -            | Negates `to`.                                                                                         |
+| b3     | not            | to: reg       | -            | Inverts the bits of `to`.                                                                             |
 
 ## Binaries
 
