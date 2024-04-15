@@ -485,8 +485,7 @@ compile_binary:
   ; Turns out, the encoding of x86_64 instructions is ... interesting. These
   ; helper macros emit the machine code instructions.
 
-  macro emit_add_soil_soil a, b { ; add a, b -> 4d 01 (c0 + a + 8 * b)
-    emit_bytes 4dh, 01h
+  macro emit_c0_plus_a_plus_eight_times_b a, b { ; (c0 + a + 8 * b)
     shl b, 3
     add b, a
     add b, 0c0h
@@ -495,9 +494,17 @@ compile_binary:
     sub b, a
     shr b, 3
   }
+  macro emit_add_soil_soil a, b { ; add a, b
+    emit_bytes 4dh, 01h
+    emit_c0_plus_a_plus_eight_times_b a, b
+  }
   macro emit_add_rax_rbp { emit_bytes 48h, 01h, 0e8h } ; mov rax, rbp
   macro emit_and_rax_ff { emit_bytes 48h, 25h, 0ffh, 00h, 00h, 00h } ; and rax, 0ffh
-  macro emit_jmp target { ; target can't be r12 or r13
+  macro emit_and_soil_soil a, b { ; and <a>, <b>
+    emit_bytes 4d, 21
+    emit_c0_plus_a_plus_eight_times_b a, b
+  }
+  macro emit_jmp target { ; jmp <target> ; target can't be r12 or r13
     emit_byte 0e9h
     ; Save a patch
     push r12
@@ -545,246 +552,198 @@ compile_binary:
     sub a, 0b0h
   }
   macro emit_mov_rax_mem_of_rax { emit_bytes 48h, 8bh, 00h } ; mov rax, [rax]
+  macro emit_neg_soil a { ; neg a
+    emit_bytes 49h, 0f7h
+    add a, 0d0h
+    emit_byte a
+    sub a, 0d0h
+  }
   macro emit_nop { emit_byte 90h }  ; nop
+  macro emit_or_soil_soil a, b { ; or <a>, <b>
+    emit_bytes 4dh, 09h
+    emit_c0_plus_a_plus_eight_times_b a, b
+  }
   macro emit_ret { emit_byte 0c3h } ; ret
-  macro emit_xor_soil_self a { ; xor <a>, <a> -> 4d 31 (c0 + 9 * a) ; a can't be r12 or r13
-    push r12
-    push r13
+  macro emit_sub_soil_soil a, b { ; sub <a>, <b>
+    emit_bytes 4dh, 29h
+    emit_c0_plus_a_plus_eight_times_b a, b
+  }
+  macro emit_xor_soil_soil a, b { ; xor <a>, <b>
     emit_bytes 4dh, 31h
-    mov r12, 0
-    mov r12b, a
-    mov r13, r12 ; r13 = a
-    shl r13, 3   ; r13 = 8 * a
-    add r13, r12 ; r13 = 9 * a
-    add r13, 0c0h
-    emit_byte r13b
-    pop r13
-    pop r12
+    emit_c0_plus_a_plus_eight_times_b a, b
   }
 
-.invalid:
-  panic str_unknown_opcode
-.nop:
-  emit_nop ; nop
-  jmp .parse_instruction
-.panic:
-  ; TODO: print stack trace and VM state
-  mov rax, 60
-  mov rdi, 1
-  syscall
-.move:
-  eat_regs_into_dil_sil
-  emit_mov_rax_soil sil ; mov rax, <from>
-  emit_mov_soil_rax dil ; mov <to>, rax
-  jmp .parse_instruction
-.movei:
-  eat_reg_into_dil
-  eat_word r12
-  emit_mov_soil_word dil, r12 ; mov <to>, <word>
-  jmp .parse_instruction
-.moveib:
-  eat_reg_into_dil
-  eat_byte r12b
-  emit_xor_soil_self dil       ; xor <to>, <to>
-  emit_mov_soil_byte dil, r12b ; mov <to>b, <byte>
-  jmp .parse_instruction
-.load:
-  eat_regs_into_dil_sil
-  emit_mov_rax_soil sil   ; mov rax, <from>
-  emit_add_rax_rbp        ; add rax, rbp    ; add the memory base pointer
-  emit_mov_rax_mem_of_rax ; mov rax, [rax]
-  emit_mov_soil_rax dil   ; mov <to>, rax
-  jmp .parse_instruction
-.loadb:
-  eat_regs_into_dil_sil
-  emit_mov_rax_soil sil   ; mov rax, <from>
-  emit_add_rax_rbp        ; add rax, rbp    ; add the memory base pointer
-  emit_mov_rax_mem_of_rax ; mov rax, [rax]
-  emit_and_rax_ff         ; and rax, 0ffh
-  emit_mov_soil_rax dil   ; mov <to>, rax
-  jmp .parse_instruction
-.store:
-  todo
-;   eat_regs_into_dil_sil
-;   load_reg rax, rdi
-;   load_reg rbx, sil
-;   add rax, rbp
-;   mov [rax], rbx
-;   advance_ip_by 2
-;   end_of_instruction
-.storeb:
-  todo
-;   eat_regs_into_dil_sil
-;   load_reg rax, rdi
-;   load_reg rbx, rsi
-;   add rax, rbp
-;   mov [rax], bl
-;   advance_ip_by 2
-;   end_of_instruction
-.push:
-  todo
-;   eat_reg_into_dil
-;   load_reg rax, rdi
-;   sub r9, 8
-;   mov rbx, r9
-;   add rbx, rbp
-;   mov [rbx], rax
-;   advance_ip_by 2
-;   end_of_instruction
-.pop:
-  todo
-;   eat_reg_into_dil
-;   mov rax, r9
-;   add rax, rbp
-;   store_reg rdi, [rax]
-;   add r9, 8
-;   advance_ip_by 2
-;   end_of_instruction
-.jump:
-  eat_word r14
-  emit_jmp r14 ; jmp <target>
-  jmp .parse_instruction
-.cjump:
-  todo
-;   advance_ip_by 10
-;   cmp r10, 0
-;   cmovne r8, [rsp + 1]
-;   end_of_instruction
-.call:
-  todo
-;   sub r9, 8
-;   mov rax, r9
-;   add rax, rbp
-;   mov [rax], r8
-;   mov r8, [rsp + 1]
-;   end_of_instruction
-.ret:
-  emit_ret ; ret
-  jmp .parse_instruction
-.syscall:
-  todo
-;   mov rax, 0
-;   mov al, [rsp + 1]
-;   mov rax, [syscalls.table + rax * 8]
-;   call rax
-;   advance_ip_by 2
-;   end_of_instruction
-.cmp:
-  todo
-;   eat_regs_into_dil_sil
-;   load_reg rax, rdi
-;   load_reg rbx, rsi
-;   mov r10, rax
-;   sub r10, rbx
-;   advance_ip_by 2
-;   end_of_instruction
-.isequal:
-  todo
-;   cmp r10, 0
-;   mov r10, 0
-;   mov rax, 1
-;   cmove r10, rax
-;   advance_ip_by 1
-;   end_of_instruction
-.isless:
-  todo
-;   cmp r10, 0
-;   mov r10, 0
-;   mov rax, 1
-;   cmovl r10, rax
-;   advance_ip_by 1
-;   end_of_instruction
-.isgreater:
-  todo
-;   cmp r10, 0
-;   mov r10, 0
-;   mov rax, 1
-;   cmovg r10, rax
-;   advance_ip_by 1
-;   end_of_instruction
-.islessequal:
-  todo
-;   cmp r10, 0
-;   mov r10, 0
-;   mov rax, 1
-;   cmovle r10, rax
-;   advance_ip_by 1
-;   end_of_instruction
-.isgreaterequal:
-  todo
-;   cmp r10, 0
-;   mov r10, 0
-;   mov rax, 1
-;   cmovge r10, rax
-;   advance_ip_by 1
-;   end_of_instruction
-.add:
-  eat_regs_into_dil_sil
-  emit_add_soil_soil dil, sil
-  jmp .parse_instruction
-.sub:
-  todo
-  ; eat_regs_into_dil_sil
-  ; load_reg rax, rdi
-  ; load_reg rbx, rsi
-  ; sub rax, rbx
-  ; store_reg rdi, rax
-  ; advance_ip_by 2
-  ; end_of_instruction
-.mul:
-  todo
-  ; eat_regs_into_dil_sil
-  ; load_reg rax, rdi
-  ; load_reg rbx, rsi
-  ; mul rbx ; rdx:rax = rax * rbx
-  ; store_reg rdi, rax
-  ; advance_ip_by 2
-  ; end_of_instruction
-.div:
-  todo
-  ; eat_regs_into_dil_sil
-  ; load_reg rax, rdi
-  ; load_reg rbx, rsi
-  ; mov rdx, 0
-  ; div rbx ; rdx:rax = rdx:rax / rbx
-  ; store_reg rdi, rax
-  ; advance_ip_by 2
-  ; end_of_instruction
-.and:
-  todo
-  ; eat_regs_into_dil_sil
-  ; load_reg rax, rdi
-  ; load_reg rbx, rsi
-  ; and rax, rbx
-  ; store_reg rdi, rax
-  ; advance_ip_by 2
-  ; end_of_instruction
-.or:
-  todo
-  ; eat_regs_into_dil_sil
-  ; load_reg rax, rdi
-  ; load_reg rbx, rsi
-  ; or rax, rbx
-  ; store_reg rdi, rax
-  ; advance_ip_by 2
-  ; end_of_instruction
-.xor:
-  todo
-  ; eat_regs_into_dil_sil
-  ; load_reg rax, rdi
-  ; load_reg rbx, rsi
-  ; xor rax, rbx
-  ; store_reg rdi, rax
-  ; advance_ip_by 2
-  ; end_of_instruction
-.negate:
-  todo
-  ; eat_reg_into_dil
-  ; load_reg rax, rdi
-  ; neg rax
-  ; store_reg rdi, rax
-  ; advance_ip_by 2
-  ; end_of_instruction
+.invalid: panic str_unknown_opcode
+.nop:     emit_nop                      ; nop
+          jmp .parse_instruction
+.panic:   ; TODO: print stack trace and VM state
+          mov rax, 60
+          mov rdi, 1
+          syscall
+.move:    eat_regs_into_dil_sil
+          emit_mov_rax_soil sil         ; mov rax, <from>
+          emit_mov_soil_rax dil         ; mov <to>, rax
+          jmp .parse_instruction
+.movei:   eat_reg_into_dil
+          eat_word r12
+          emit_mov_soil_word dil, r12   ; mov <to>, <word>
+          jmp .parse_instruction
+.moveib:  eat_reg_into_dil
+          eat_byte r12b
+          mov sil, dil
+          emit_xor_soil_soil dil, sil   ; xor <to>, <to>
+          emit_mov_soil_byte dil, r12b  ; mov <to>b, <byte>
+          jmp .parse_instruction
+.load:    eat_regs_into_dil_sil
+          emit_mov_rax_soil sil         ; mov rax, <from>
+          emit_add_rax_rbp              ; add rax, rbp    ; add the memory base pointer
+          emit_mov_rax_mem_of_rax       ; mov rax, [rax]
+          emit_mov_soil_rax dil         ; mov <to>, rax
+          jmp .parse_instruction
+.loadb:   eat_regs_into_dil_sil
+          emit_mov_rax_soil sil         ; mov rax, <from>
+          emit_add_rax_rbp              ; add rax, rbp    ; add the memory base pointer
+          emit_mov_rax_mem_of_rax       ; mov rax, [rax]
+          emit_and_rax_ff               ; and rax, 0ffh
+          emit_mov_soil_rax dil         ; mov <to>, rax
+          jmp .parse_instruction
+.store:   eat_regs_into_dil_sil
+          emit_mov_rax_soil dil         ; mov rax, <to>
+          todo
+          ; eat_regs_into_dil_sil
+          ; load_reg rax, rdi
+          ; load_reg rbx, sil
+          ; add rax, rbp
+          ; mov [rax], rbx
+          ; advance_ip_by 2
+          ; end_of_instruction
+.storeb:  todo
+          ; eat_regs_into_dil_sil
+          ; load_reg rax, rdi
+          ; load_reg rbx, rsi
+          ; add rax, rbp
+          ; mov [rax], bl
+          ; advance_ip_by 2
+          ; end_of_instruction
+.push:    todo
+          ; eat_reg_into_dil
+          ; load_reg rax, rdi
+          ; sub r9, 8
+          ; mov rbx, r9
+          ; add rbx, rbp
+          ; mov [rbx], rax
+          ; advance_ip_by 2
+          ; end_of_instruction
+.pop:     todo
+          ; eat_reg_into_dil
+          ; mov rax, r9
+          ; add rax, rbp
+          ; store_reg rdi, [rax]
+          ; add r9, 8
+          ; advance_ip_by 2
+          ; end_of_instruction
+.jump:    eat_word r14
+          emit_jmp r14                ; jmp <target>
+          jmp .parse_instruction
+.cjump:   todo
+          ; advance_ip_by 10
+          ; cmp r10, 0
+          ; cmovne r8, [rsp + 1]
+          ; end_of_instruction
+.call:    todo
+          ; sub r9, 8
+          ; mov rax, r9
+          ; add rax, rbp
+          ; mov [rax], r8
+          ; mov r8, [rsp + 1]
+          ; end_of_instruction
+.ret:     emit_ret ; ret
+          jmp .parse_instruction
+.syscall: todo
+          ; mov rax, 0
+          ; mov al, [rsp + 1]
+          ; mov rax, [syscalls.table + rax * 8]
+          ; call rax
+          ; advance_ip_by 2
+          ; end_of_instruction
+.cmp:     todo
+          ; eat_regs_into_dil_sil
+          ; load_reg rax, rdi
+          ; load_reg rbx, rsi
+          ; mov r10, rax
+          ; sub r10, rbx
+          ; advance_ip_by 2
+          ; end_of_instruction
+.isequal: todo
+          ; cmp r10, 0
+          ; mov r10, 0
+          ; mov rax, 1
+          ; cmove r10, rax
+          ; advance_ip_by 1
+          ; end_of_instruction
+.isless:  todo
+          ; cmp r10, 0
+          ; mov r10, 0
+          ; mov rax, 1
+          ; cmovl r10, rax
+          ; advance_ip_by 1
+          ; end_of_instruction
+.isgreater: todo
+          ; cmp r10, 0
+          ; mov r10, 0
+          ; mov rax, 1
+          ; cmovg r10, rax
+          ; advance_ip_by 1
+          ; end_of_instruction
+.islessequal: todo
+          ; cmp r10, 0
+          ; mov r10, 0
+          ; mov rax, 1
+          ; cmovle r10, rax
+          ; advance_ip_by 1
+          ; end_of_instruction
+.isgreaterequal: todo
+          ; cmp r10, 0
+          ; mov r10, 0
+          ; mov rax, 1
+          ; cmovge r10, rax
+          ; advance_ip_by 1
+          ; end_of_instruction
+.add:     eat_regs_into_dil_sil
+          emit_add_soil_soil dil, sil
+          jmp .parse_instruction
+.sub:     eat_regs_into_dil_sil
+          emit_sub_soil_soil dil, sil
+          jmp .parse_instruction
+.mul:     todo
+          ; eat_regs_into_dil_sil
+          ; load_reg rax, rdi
+          ; load_reg rbx, rsi
+          ; mul rbx ; rdx:rax = rax * rbx
+          ; store_reg rdi, rax
+          ; advance_ip_by 2
+          ; end_of_instruction
+.div:     todo
+          ; eat_regs_into_dil_sil
+          ; load_reg rax, rdi
+          ; load_reg rbx, rsi
+          ; mov rdx, 0
+          ; div rbx ; rdx:rax = rdx:rax / rbx
+          ; store_reg rdi, rax
+          ; advance_ip_by 2
+          ; end_of_instruction
+.and:     eat_regs_into_dil_sil
+          emit_and_soil_soil dil, sil
+          jmp .parse_instruction
+.or:      eat_regs_into_dil_sil
+          emit_or_soil_soil dil, sil
+          jmp .parse_instruction
+.xor:     eat_regs_into_dil_sil
+          emit_xor_soil_soil dil, sil
+          jmp .parse_instruction
+.negate:  eat_reg_into_dil
+          emit_neg_soil dil
+          jmp .parse_instruction
 
 
 ; Running the code
