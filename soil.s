@@ -421,7 +421,7 @@ compile_binary:
   inc r10
   jmp .fix_patch
 .done_fixing_patches:
-  ret
+  jmp .parse_section
 
 .jump_table:
   ; This macro generates (to - from + 1) pointers to .invalid. Both bounds are
@@ -570,6 +570,15 @@ compile_binary:
     emit_byte 0e8h
     emit_relative_patch target
   }
+  macro emit_call_to_comptime target { ; jmp <target> ; target can't be r12 or rax
+    emit_byte 0e8h
+    mov r12, target
+    sub r12, [my_heap.head]
+    sub r12, 4
+    mov rax, 4
+    call malloc
+    mov qword [rax], r12
+  }
   macro emit_idiv_soil a { ; idiv <a>
     emit_bytes 49h, 0f7h
     emit_value_plus_a 0f8h, a
@@ -582,9 +591,14 @@ compile_binary:
     emit_byte 0e9h
     emit_relative_patch target
   }
-  macro emit_jmp_to_comptime target { ; jmp <target> ; target can't be r12 or r13
+  macro emit_jmp_to_comptime target { ; jmp <target> ; target can't be r12 or rax
     emit_byte 0e9h
-    emit_relative_patch target
+    mov r12, target
+    sub r12, [my_heap.head]
+    sub r12, 4
+    mov rax, 4
+    call malloc
+    mov qword [rax], r12
   }
   macro emit_jnz target { ; jnz <target> ; target can't be r12 or r13
     emit_bytes 0fh, 85h
@@ -725,9 +739,10 @@ compile_binary:
           jmp .parse_instruction
 .ret:     emit_ret                      ; ret
           jmp .parse_instruction
-.syscall: eat_byte r14
-          lea r14, [syscalls.table + 8 * r14]
-          emit_jmp_to_comptime r14      ; jmp [syscalls.table + 9 * <a>]
+.syscall: mov r14, 0
+          eat_byte r14b
+          mov r14, [syscalls.table + 8 * r14]
+          emit_call_to_comptime r14      ; call <syscall>
           jmp .parse_instruction
 .cmp:     eat_regs_into_dil_sil
           mov bl, 1 ; st = r9
@@ -849,25 +864,36 @@ syscalls:
 .unknown:
   panic str_unknown_syscall, str_unknown_syscall.len
 
+macro push_syscall_clobbers {
+  push r11
+}
+macro pop_syscall_clobbers {
+  pop r11
+}
+
 .exit:
   mov rax, 60 ; exit syscall
-  mov rdi, [rbp + r11] ; status code (from the a register)
+  mov rdi, [rbp + r10] ; status code (from the a register)
   syscall
 
 .print:
+  push_syscall_clobbers
   mov rax, 1 ; write syscall
   mov rdi, 1 ; stdout
-  lea rsi, [rbp + r11] ; pointer to string (from the a register)
-  mov rdx, r12 ; length of the string (from the b register)
+  lea rsi, [rbp + r10] ; pointer to string (from the a register)
+  mov rdx, r11 ; length of the string (from the b register)
   syscall
+  pop_syscall_clobbers
   ret
 
 .log:
+  push_syscall_clobbers
   mov rax, 1 ; write syscall
   mov rdi, 2 ; stderr
-  lea rsi, [rbp + r11] ; pointer to message (from the a register)
-  mov rdx, r12 ; length of the message (from the b register)
+  lea rsi, [rbp + r10] ; pointer to message (from the a register)
+  mov rdx, r11 ; length of the message (from the b register)
   syscall
+  pop_syscall_clobbers
   ret
 
 .create:
