@@ -20,7 +20,7 @@ format ELF64 executable
 
 segment readable executable
 
-memory_size = 1000000
+memory_size = 1000
 
 jmp main
 
@@ -53,21 +53,19 @@ print:
   ret
 
 ; Panics with a message. Doesn't return.
-; < rsi: pointer to message
-; < rdx: length of message
+; < rax: pointer to message
+; < rbx: length of message
 panic:
   call print
   mov rax, 60
   mov rdi, 1
   syscall
-macro panic msg {
-  mov rsi, msg
-  mov rdx, `msg.len
+macro panic msg, len {
+  mov rax, msg
+  mov rbx, len
   call panic
 }
-macro todo {
-  panic str_todo
-}
+macro todo { panic str_todo, str_todo.len }
 
 ; Memory allocation
 ; =================
@@ -191,7 +189,7 @@ malloc:
   pop r8
   ret
 .error:
-  panic str_oom
+  panic str_oom, str_oom.len
 
 ; The generated machine code must be page-aligned. Because our heap only
 ; allocates full pages, the current end is the next page-aligned address.
@@ -302,14 +300,14 @@ compile_binary:
   jmp .parse_section
 
 .magic_bytes_mismatch:
-  panic str_magic_bytes_mismatch
+  panic str_magic_bytes_mismatch, str_magic_bytes_mismatch.len
 
 .parse_section:
   cmp r8, r9
   jge .done_with_parsing_sections
   eat_byte r10b ; type
   eat_word r11 ; length
-  ; type: machine code
+  ; type: byte code
   cmp r10b, 0
   je .parse_byte_code
   ; type: initial memory
@@ -372,10 +370,11 @@ compile_binary:
 
 .parse_instruction:
   ; Add a mapping from byte code to x86_64 machine code instruction.
-  ; instruction_mapping[byte code cursor - byte_code start] = machine code cursor
-  mov r12, [instruction_mapping]
-  add r12, r8
-  sub r12, r10
+  ; instruction_mapping[4 * (byte code cursor - byte code start)] = machine code cursor
+  mov r12, r8  ; byte code cursor
+  sub r12, r10 ; byte code cursor - byte code start
+  shl r12, 2   ; 4 * (byte code cursor - byte code start)
+  add r12, [instruction_mapping] ; instruction_mapping[4 * (byte code cursor - byte code start)]
   mov r13, [my_heap.head]
   sub r13, [machine_code]
   mov [r12], r13d
@@ -393,22 +392,33 @@ compile_binary:
   mov [machine_code.len], r10
   call advance_heap_to_next_page
   ; Fix patches
-  mov r10, [patches]       ; cursor through patches
+  mov r10, 0 ; cursor through patches
   mov r11, [patches.len]
-  lea r11, [8 * r11 + r10] ; end of the patches
 .fix_patch:
   cmp r10, r11
   je .done_fixing_patches
-  mov r12, 0
+  ; Calculate the absolute position of the target that needs to be patched.
+  mov r12, [patches]
+  lea r12, [r12 + r10 * 8]
   mov r13, 0
-  mov r12d, [r10]     ; the position in the machine code
-  mov r13d, [r10 + 4] ; the target in the byte code
+  mov r13d, [r12]
+  add r13, [machine_code]
+  mov r12, r13
+  ; Calculate the patch target.
+  mov r13, [patches]
+  lea r13, [r13 + r10 * 8 + 4]
   mov r14, 0
-  mov r14d, [instruction_mapping + 4 * r13] ; byte index in the machine code
-  sub r14, r12 ; relative length in bytes to jump in the machine code
-  add r12, [machine_code]
-  mov [r12], r14d
-  add r10, 8
+  mov r14d, [r13] ; index into the byte code
+  shl r14, 2
+  add r14, [instruction_mapping]
+  mov r13, 0
+  mov r13d, [r14] ; index into the machine code
+  add r13, [machine_code] ; absolute target
+  ; Patch the target.
+  sub r13, r12 ; jump is relative
+  sub r13, 4 ; ... to the end of the jump/call instruction
+  mov [r12], r13d
+  inc r10
   jmp .fix_patch
 .done_fixing_patches:
   ret
@@ -429,7 +439,8 @@ compile_binary:
   dq .sub ; a1
   dq .mul ; a2
   dq .div ; a3
-  invalid_opcodes 0a4h, 0afh
+  dq .rem ; a4
+  invalid_opcodes 0a5h, 0afh
   dq .and ; b0
   dq .or ; b1
   dq .xor ; b2
@@ -525,7 +536,7 @@ compile_binary:
     inc r13
     mov [patches.len], r13
     mov r13, [my_heap.head]
-    add r13, 4 ; the address is relative to the end of the instruction
+    sub r13, [machine_code]
     mov [r12], r13d
     mov r13, target
     mov [r12 + 4], r13d
@@ -533,17 +544,14 @@ compile_binary:
     pop r12
     emit_bytes 00h, 00h, 00h, 00h
   }
-  macro emit_relative_comptime target { ; target can't be r12 or r13
+  macro emit_relative_comptime target { ; target can't be r12
     push r12
-    push r13
-    mov r13, [my_heap.head]
-    add r13, 4 ; the address is relative to the end of the instruction
     mov r12, target
-    sub r12, r13
+    sub r12, [my_heap.head]
+    sub r12, 4 ; the address is relative to the end of the instruction
     mov rax, 4
     call malloc
-    mov [rax], r13d
-    pop r13
+    mov [rax], r12d
     pop r12
   }
 
@@ -551,7 +559,7 @@ compile_binary:
     emit_bytes 4dh, 01h
     emit_c0_plus_a_plus_8_times_b a, b
   }
-  macro emit_add_r8_8 { emit_bytes 49h, 83h, 0c0h, 08h }
+  macro emit_add_r8_8 { emit_bytes 49h, 83h, 0c0h, 08h } ; add r8, 8
   macro emit_add_rax_rbp { emit_bytes 48h, 01h, 0e8h } ; mov rax, rbp
   macro emit_and_rax_ff { emit_bytes 48h, 25h, 0ffh, 00h, 00h, 00h } ; and rax, 0ffh
   macro emit_and_soil_soil a, b { ; and <a>, <b>
@@ -606,7 +614,7 @@ compile_binary:
   }
   macro emit_mov_soil_rdx a { ; mov <a>, rdx
     emit_bytes 49h, 89h
-    emit_value_plus_a 0d1h, a
+    emit_value_plus_a 0d0h, a
   }
   macro emit_mov_soil_rax a { ; mov <a>, rax
     emit_bytes 49h, 89h
@@ -614,13 +622,13 @@ compile_binary:
   }
   macro emit_mov_soil_mem_of_rdp_plus_soil a, b { ; mov <a>, [rbp + <b>]
     emit_bytes 4dh, 8bh
-    emit_value_plus_8_times_a 0ch, a
+    emit_value_plus_8_times_a 04h, a
     emit_value_plus_a 28h, b
   }
   macro emit_mov_soilb_mem_of_rdp_plus_soil a, b { ; mov <a>b, [rbp + <b>]
     emit_bytes 45h, 8ah
     emit_value_plus_8_times_a 04h, a
-    emit_value_plus_a 28, b
+    emit_value_plus_a 28h, b
   }
   macro emit_mov_soil_soil a, b { ; mov <a>, <b>
     emit_bytes 4dh, 89h
@@ -659,19 +667,17 @@ compile_binary:
   }
   macro emit_sub_r8_8 { emit_bytes 49h, 83h, 0e8h, 08h } ; sub r8, 8
   macro emit_test_r9_r9 { emit_bytes 4dh, 85h, 0c9h } ; test r9, r9
-  macro emit_xor_rdx_rdx { emit_bytes 48h, 31h, 0d2h } ; xor rdx, rdx 
+  macro emit_xor_r9_r9 { emit_bytes 4dh, 31h, 0c9h } ; xor r9, r9
+  macro emit_xor_rdx_rdx { emit_bytes 48h, 31h, 0d2h } ; xor rdx, rdx
   macro emit_xor_soil_soil a, b { ; xor <a>, <b>
     emit_bytes 4dh, 31h
     emit_c0_plus_a_plus_8_times_b a, b
   }
 
-.invalid: panic str_unknown_opcode
+.invalid: panic str_unknown_opcode, str_unknown_opcode.len
 .nop:     emit_nop                      ; nop
           jmp .parse_instruction
-.panic:   ; TODO: print stack trace and VM state
-          mov rax, 60
-          mov rdi, 1
-          syscall
+.panic:   emit_jmp_to_comptime panic_with_stack_trace
 .move:    eat_regs_into_dil_sil
           emit_mov_soil_soil dil, sil   ; mov <to>, <from>
           jmp .parse_instruction
@@ -689,6 +695,8 @@ compile_binary:
           emit_mov_soil_mem_of_rdp_plus_soil dil, sil ; mov <a>, [rbp + <b>]
           jmp .parse_instruction
 .loadb:   eat_regs_into_dil_sil
+          mov r14b, dil
+          emit_xor_soil_soil dil, r14b  ; xor <a>, <a>
           emit_mov_soilb_mem_of_rdp_plus_soil dil, sil ; mov <a>b, [rbp + <b>]
           jmp .parse_instruction
 .store:   eat_regs_into_dil_sil
@@ -727,14 +735,17 @@ compile_binary:
           emit_sub_soil_soil bl, sil    ; sub r9, <right>
           jmp .parse_instruction
 .isequal: emit_test_r9_r9               ; test r9, r9
+          emit_xor_r9_r9                ; xor r9, r9
           emit_sete_r9b                 ; sete r9b
           jmp .parse_instruction
 .isless:  emit_shr_r9_63                ; shr r9, 63
           jmp .parse_instruction
 .isgreater: emit_test_r9_r9             ; test r9, r9
+          emit_xor_r9_r9                ; xor r9, r9
           emit_setg_r9b                 ; setg r9b
           jmp .parse_instruction
 .islessequal: emit_test_r9_r9           ; test r9, r9
+          emit_xor_r9_r9                ; xor r9, r9
           emit_setle_r9b                ; setle r9b
           jmp .parse_instruction
 .isgreaterequal: emit_not_r9            ; not r9
@@ -752,16 +763,16 @@ compile_binary:
 .div:     eat_regs_into_dil_sil
           ; idiv implicitly divides rdx:rax by the operand. rax -> quotient
           emit_xor_rdx_rdx              ; xor rdx, rdx
-          emit_mov_rax_soil sil         ; mov rax, <to>
-          emit_idiv_soil dil            ; idiv <from>
-          emit_mov_soil_rax sil         ; mov <to>, rax
+          emit_mov_rax_soil dil         ; mov rax, <to>
+          emit_idiv_soil sil            ; idiv <from>
+          emit_mov_soil_rax dil         ; mov <to>, rax
           jmp .parse_instruction
 .rem:     eat_regs_into_dil_sil
           ; idiv implicitly divides rdx:rax by the operand. rdx -> remainder
           emit_xor_rdx_rdx              ; xor rdx, rdx
-          emit_mov_rax_soil sil         ; mov rax, <to>
-          emit_idiv_soil dil            ; idiv <from>
-          emit_mov_soil_rdx sil         ; mov <to>, rdx
+          emit_mov_rax_soil dil         ; mov rax, <to>
+          emit_idiv_soil sil            ; idiv <from>
+          emit_mov_soil_rdx dil         ; mov <to>, rdx
           jmp .parse_instruction
 .and:     eat_regs_into_dil_sil
           emit_and_soil_soil dil, sil   ; and <to>, <from>
@@ -775,6 +786,13 @@ compile_binary:
 .not:     eat_reg_into_dil
           emit_not_soil dil             ; not <to>
           jmp .parse_instruction
+
+
+; Panic with stack trace
+; ======================
+
+panic_with_stack_trace:
+  panic str_vm_panicked, str_vm_panicked.len
 
 
 ; Running the code
@@ -799,9 +817,9 @@ run:
   mov rbp, [memory]
   ; Jump into the machine code
   call qword [machine_code]
-  nop
-  nop
-  nop
+  mov rax, 60
+  mov rdi, 0
+  syscall
 
 main:
   call init_heap
@@ -816,59 +834,59 @@ main:
 ; ========
 
 syscalls:
-  .table:
-    dq .exit         ; 0
-    dq .print        ; 1
-    dq .log          ; 2
-    dq .create       ; 3
-    dq .open_reading ; 4
-    dq .open_writing ; 5
-    dq .read         ; 6
-    dq .write        ; 7
-    dq .close        ; 8
-    dq 248 dup .unknown
+.table:
+  dq .exit         ; 0
+  dq .print        ; 1
+  dq .log          ; 2
+  dq .create       ; 3
+  dq .open_reading ; 4
+  dq .open_writing ; 5
+  dq .read         ; 6
+  dq .write        ; 7
+  dq .close        ; 8
+  dq 248 dup .unknown
 
-  .unknown:
-    panic str_unknown_syscall
+.unknown:
+  panic str_unknown_syscall, str_unknown_syscall.len
 
-  .exit:
-    mov rax, 60 ; exit syscall
-    mov rdi, [rbp + r11] ; status code (from the a register)
-    syscall
+.exit:
+  mov rax, 60 ; exit syscall
+  mov rdi, [rbp + r11] ; status code (from the a register)
+  syscall
 
-  .print:
-    mov rax, 1 ; write syscall
-    mov rdi, 1 ; stdout
-    lea rsi, [rbp + r11] ; pointer to string (from the a register)
-    mov rdx, r12 ; length of the string (from the b register)
-    syscall
-    ret
+.print:
+  mov rax, 1 ; write syscall
+  mov rdi, 1 ; stdout
+  lea rsi, [rbp + r11] ; pointer to string (from the a register)
+  mov rdx, r12 ; length of the string (from the b register)
+  syscall
+  ret
 
-  .log:
-    mov rax, 1 ; write syscall
-    mov rdi, 2 ; stderr
-    lea rsi, [rbp + r11] ; pointer to message (from the a register)
-    mov rdx, r12 ; length of the message (from the b register)
-    syscall
-    ret
+.log:
+  mov rax, 1 ; write syscall
+  mov rdi, 2 ; stderr
+  lea rsi, [rbp + r11] ; pointer to message (from the a register)
+  mov rdx, r12 ; length of the message (from the b register)
+  syscall
+  ret
 
-  .create:
-    todo
+.create:
+  todo
 
-  .open_reading:
-    todo
+.open_reading:
+  todo
 
-  .open_writing:
-    todo
+.open_writing:
+  todo
 
-  .read:
-    todo
+.read:
+  todo
 
-  .write:
-    todo
+.write:
+  todo
 
-  .close:
-    todo
+.close:
+  todo
 
 segment readable writable
 
@@ -888,6 +906,8 @@ str_unknown_opcode: db "Unknown opcode", 0xa
   .len = ($ - str_unknown_opcode)
 str_unknown_syscall: db "Unknown syscall", 0xa
   .len = ($ - str_unknown_syscall)
+str_vm_panicked: db "Oh no! The program panicked.", 0xa
+  .len = ($ - str_vm_panicked)
 
 ; The entire content of the .soil file.
 binary:
