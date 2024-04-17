@@ -920,7 +920,20 @@ macro pop_syscall_clobbers {
   ret
 
 .create:
-  todo
+  push_syscall_clobbers
+  mov rcx, rbp
+  add rcx, r10
+  add rcx, r11
+  mov bl, [rcx]
+  mov [rcx], byte 0
+  mov rax, 1 ; open syscall
+  lea rdi, [r10 + rbp]
+  mov rsi, 01102o ; RDWR|CREAT|TRUNC
+  mov rdx, 0777o
+  syscall
+  mov r10, rax
+  pop_syscall_clobbers
+  ret
 
 .open_reading:
   todo
@@ -932,10 +945,49 @@ macro pop_syscall_clobbers {
   todo
 
 .write:
-  todo
+  push_syscall_clobbers
+  mov rax, 1 ; write
+  mov rdi, r10 ; file descriptor
+  mov rsi, r11 ; buffer.data
+  mov rdx, r12 ; buffer.len
+  syscall
+  ; TODO: assert that this worked
+  pop_syscall_clobbers
+  ret
 
 .close:
-  todo
+  push_syscall_clobbers
+  mov rax, 3 ; close
+  mov rdi, r10 ; file descriptor
+  syscall
+  ; TODO: assert that this worked
+  pop_syscall_clobbers
+  ret
+
+; void syscall_create() {
+;   char filename[REGB];
+;   for (int i = 0; i < REGB; i++) filename[i] = mem[REGA + i];
+;   filename[REGB] = 0;
+;   REGA = (Word)fopen(filename, "w+");
+; }
+; void syscall_open_reading() {
+;   char filename[REGB];
+;   for (int i = 0; i < REGB; i++) filename[i] = mem[REGA + i];
+;   filename[REGB] = 0;
+;   printf("opening filename %s\n", filename);
+;   REGA = (Word)fopen(filename, "r");
+; }
+; void syscall_open_writing() {
+;   char filename[REGB];
+;   for (int i = 0; i < REGB; i++) filename[i] = mem[REGA + i];
+;   filename[REGB] = 0;
+;   REGA = (Word)fopen(filename, "w+");
+; }
+; void syscall_read() { REGA = fread(mem + REGB, 1, REGC, (FILE*)REGA); }
+; void syscall_write() {
+;   // TODO: assert that this worked
+;   fwrite(mem + REGB, 1, REGC, (FILE*)REGA);
+; }
 
 segment readable writable
 
