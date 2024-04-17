@@ -67,6 +67,25 @@ macro panic msg, len {
 }
 macro todo { panic str_todo, str_todo.len }
 
+macro replace_byte_with_hex_digit target, with { ; clobbers rbx, rcx
+  mov cl, 48 ; ASCII 0
+  cmp with, 10
+  mov rbx, 97
+  cmovge rcx, rbx ; ASCII a
+  add cl, with
+  mov [target], cl
+}
+macro replace_two_bytes_with_hex_byte target, with { ; clobbers rbx, rcx, dl
+  mov dl, with
+  shr with, 4
+  replace_byte_with_hex_digit target, with
+  mov with, dl
+  and with, 0fh
+  mov rdx, target
+  inc rdx
+  replace_byte_with_hex_digit rdx, with
+}
+
 ; Memory allocation
 ; =================
 ;
@@ -270,7 +289,11 @@ load_binary:
 
 compile_binary:
   ; Allocate memory for the VM.
+  ; Allocate one byte more than memory_size so that syscalls that need null-
+  ; terminated strings can temporarily swap out one byte after a string in
+  ; memory, even if it's at the end of the VM memory.
   mov rax, memory_size
+  inc rax
   call malloc
   mov [memory], rax
 
@@ -610,21 +633,15 @@ compile_binary:
     emit_value_plus_a 0c0h, a
     shr a, 3
   }
-  macro emit_mov_mem_of_r8_soil a { ; mov [r8], <a>
+  macro emit_mov_mem_of_rbp_plus_soil_soil a, b { ; mov [rbp + <a>], <b>
     emit_bytes 4dh, 89h
-    emit_8_times_a a
+    emit_value_plus_8_times_a 04h, b
+    emit_value_plus_a 28h, a
   }
-  macro emit_mov_mem_of_soil_soil a, b { ; mov [<a>], <b>
-    emit_bytes 4dh, 89h
-    emit_a_plus_8_times_b a, b
-  }
-  macro emit_mov_mem_of_soil_soilb a, b { ; mov [<a>], <b>b
+  macro emit_mov_mem_of_rbp_plus_soil_soilb a, b { ; mov [rbp + <a>], <b>b
     emit_bytes 45h, 88h
-    emit_a_plus_8_times_b a, b
-  }
-  macro emit_mov_soil_mem_of_r8 a { ; mov <a>, [r8]
-    emit_bytes 4dh, 8bh
-    emit_8_times_a a
+    emit_value_plus_8_times_a 04h, b
+    emit_value_plus_a 28h, a
   }
   macro emit_mov_soil_rdx a { ; mov <a>, rdx
     emit_bytes 49h, 89h
@@ -639,7 +656,7 @@ compile_binary:
     emit_value_plus_8_times_a 04h, a
     emit_value_plus_a 28h, b
   }
-  macro emit_mov_soilb_mem_of_rdp_plus_soil a, b { ; mov <a>b, [rbp + <b>]
+  macro emit_mov_soilb_mem_of_rbp_plus_soil a, b { ; mov <a>b, [rbp + <b>]
     emit_bytes 45h, 8ah
     emit_value_plus_8_times_a 04h, a
     emit_value_plus_a 28h, b
@@ -688,10 +705,13 @@ compile_binary:
     emit_c0_plus_a_plus_8_times_b a, b
   }
 
-.invalid: panic str_unknown_opcode, str_unknown_opcode.len
+.invalid: hlt
+          replace_two_bytes_with_hex_byte (str_unknown_opcode + str_unknown_opcode.hex_offset), r12b
+          panic str_unknown_opcode, str_unknown_opcode.len
 .nop:     emit_nop                      ; nop
           jmp .parse_instruction
 .panic:   emit_jmp_to_comptime panic_with_stack_trace
+          jmp .parse_instruction
 .move:    eat_regs_into_dil_sil
           emit_mov_soil_soil dil, sil   ; mov <to>, <from>
           jmp .parse_instruction
@@ -706,25 +726,27 @@ compile_binary:
           emit_mov_soil_byte dil, r12b  ; mov <to>b, <byte>
           jmp .parse_instruction
 .load:    eat_regs_into_dil_sil
-          emit_mov_soil_mem_of_rdp_plus_soil dil, sil ; mov <a>, [rbp + <b>]
+          emit_mov_soil_mem_of_rdp_plus_soil dil, sil ; mov <to>, [rbp + <from>]
           jmp .parse_instruction
 .loadb:   eat_regs_into_dil_sil
           mov r14b, dil
-          emit_xor_soil_soil dil, r14b  ; xor <a>, <a>
-          emit_mov_soilb_mem_of_rdp_plus_soil dil, sil ; mov <a>b, [rbp + <b>]
+          emit_xor_soil_soil dil, r14b  ; xor <to>, <to>
+          emit_mov_soilb_mem_of_rbp_plus_soil dil, sil ; mov <to>b, [rbp + <from>]
           jmp .parse_instruction
 .store:   eat_regs_into_dil_sil
-          emit_mov_mem_of_soil_soil dil, sil ; mov [<to>], <from>
+          emit_mov_mem_of_rbp_plus_soil_soil dil, sil ; mov [rbp + <to>], <from>
           jmp .parse_instruction
 .storeb:  eat_regs_into_dil_sil
-          emit_mov_mem_of_soil_soilb dil, sil ; mov [<to>], <from>b
+          emit_mov_mem_of_rbp_plus_soil_soilb dil, sil ; mov [rbp + <to>], <from>b
           jmp .parse_instruction
 .push:    eat_reg_into_dil
-          emit_sub_r8_8                 ; mov r8, 8
-          emit_mov_mem_of_r8_soil dil   ; mov [r8], <a>
+          emit_sub_r8_8                 ; sub r8, 8
+          mov sil, 0 ; sp
+          emit_mov_mem_of_rbp_plus_soil_soil sil, dil ; mov [rbp + r8], <from>
           jmp .parse_instruction
 .pop:     eat_reg_into_dil
-          emit_mov_soil_mem_of_r8 dil   ; mov <a>, [r8]
+          mov sil, 0 ; sp
+          emit_mov_soil_mem_of_rdp_plus_soil dil, sil ; mov <a>, [rbp + r8]
           emit_add_r8_8                 ; add r8, 8
           jmp .parse_instruction
 .jump:    eat_word r14
@@ -742,7 +764,7 @@ compile_binary:
 .syscall: mov r14, 0
           eat_byte r14b
           mov r14, [syscalls.table + 8 * r14]
-          emit_call_to_comptime r14      ; call <syscall>
+          emit_call_to_comptime r14     ; call <syscall>
           jmp .parse_instruction
 .cmp:     eat_regs_into_dil_sil
           mov bl, 1 ; st = r9
@@ -845,6 +867,7 @@ main:
   mov rdi, 0
   syscall
 
+
 ; Syscalls
 ; ========
 
@@ -922,15 +945,16 @@ my_heap:
 
 str_foo: db "foo", 0xa
   .len = ($ - str_foo)
-str_magic_bytes_mismatch: db "Magic bytes don't match", 0xa
+str_magic_bytes_mismatch: db "magic bytes don't match", 0xa
   .len = ($ - str_magic_bytes_mismatch)
 str_oom: db "Out of memory", 0xa
   .len = ($ - str_oom)
 str_todo: db "Todo", 0xa
   .len = ($ - str_todo)
-str_unknown_opcode: db "Unknown opcode", 0xa
+str_unknown_opcode: db "unknown opcode xx", 0xa
   .len = ($ - str_unknown_opcode)
-str_unknown_syscall: db "Unknown syscall", 0xa
+  .hex_offset = (.len - 3)
+str_unknown_syscall: db "unknown syscall", 0xa
   .len = ($ - str_unknown_syscall)
 str_vm_panicked: db "Oh no! The program panicked.", 0xa
   .len = ($ - str_vm_panicked)
