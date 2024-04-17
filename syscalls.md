@@ -1,11 +1,21 @@
-| number | mnemonic     | a               | b            | c          | d    | description                          |
-| ------ | ------------ | --------------- | ------------ | ---------- | ---- | ------------------------------------ |
-| 0      | exit         | status          | -            |            |      | Exits the program.                   |
-| 1      | print        | msg.data        | msg.len      |            |      | Prints the message to stdout.        |
-| 2      | log          | msg.data        | msg.len      |            |      | Logs the message to stderr.          |
-| 3      | create       | filename.data   | filename.len | mode       |      | Creates the file.                    |
-| 4      | open_reading | filename.data   | filename.len | flags      | mode | Opens the file.                      |
-| 5      | open_writing | filename.data   | filename.len | flags      | mode | Opens the file.                      |
-| 6      | read         | file descriptor | buffer.data  | buffer.len |      | Reads from the file into the buffer. |
-| 7      | write        | file descriptor | buffer.data  | buffer.len |      | Write to the file from the buffer.   |
-| 8      | close        | file descriptor |              |            |      | Close the file.                      |
+| number | mnemonic     | a               | b            | c          | d    |
+| ------ | ------------ | --------------- | ------------ | ---------- | ---- |
+| 0      | exit         | status          | -            |            |      |
+| 1      | print        | msg.data        | msg.len      |            |      |
+| 2      | log          | msg.data        | msg.len      |            |      |
+| 3      | create       | filename.data   | filename.len | mode       |      |
+| 4      | open_reading | filename.data   | filename.len | flags      | mode |
+| 5      | open_writing | filename.data   | filename.len | flags      | mode |
+| 6      | read         | file descriptor | buffer.data  | buffer.len |      |
+| 7      | write        | file descriptor | buffer.data  | buffer.len |      |
+| 8      | close        | file descriptor |              |            |      |
+
+- **exit**: Exits the program. This is guaranteed to never return.
+- **print**: Writes the message to stdout.
+- **log**: Writes the message to stderr.
+- **create**: Creates the file. Sets `a` to a file descriptor or zero if it didn't work.
+- **open_reading**: Opens the file for reading. Sets `a` to a file descriptor or zero if it didn't work.
+- **open_reading**: Opens the file for writing. Sets `a` to a file descriptor or zero if it didn't work.
+- **read**: Reads from the file descriptor into the buffer, at most buffer.len. Sets `a` to the amount of bytes that were read.
+- **write**: Writes from the buffer to the file descriptor, at most buffer.len. Sets `a` to the amount of bytes that were written.
+- **close**: Closes the file descriptor. Sets `a` to one if it worked or zero if it didn't work.
