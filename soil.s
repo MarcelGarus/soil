@@ -705,8 +705,7 @@ compile_binary:
     emit_c0_plus_a_plus_8_times_b a, b
   }
 
-.invalid: hlt
-          replace_two_bytes_with_hex_byte (str_unknown_opcode + str_unknown_opcode.hex_offset), r12b
+.invalid: replace_two_bytes_with_hex_byte (str_unknown_opcode + str_unknown_opcode.hex_offset), r12b
           panic str_unknown_opcode, str_unknown_opcode.len
 .nop:     emit_nop                      ; nop
           jmp .parse_instruction
