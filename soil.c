@@ -4,7 +4,9 @@
 #include <string.h>
 
 #define MEMORY_SIZE 0x1000000
+#define TRACE_INSTRUCTIONS 0
 #define TRACE_CALLS 0
+#define TRACE_SYSCALLS 0
 
 void panic(int exit_code, char* msg) {
   printf("%s\n", msg);
@@ -82,40 +84,55 @@ void dump_and_panic(char* msg) {
 }
 
 void syscall_none() { dump_and_panic("invalid syscall number"); }
-void syscall_exit() { printf("exited with %ld\n", REGA); exit(REGA); }
+void syscall_exit() {
+  if (TRACE_SYSCALLS) printf("syscall exit(%ld)\n", REGA);
+  printf("exited with %ld\n", REGA); exit(REGA);
+}
 void syscall_print() {
+  if (TRACE_SYSCALLS) printf("syscall print(%lx, %ld)\n", REGA, REGB);
   for (int i = 0; i < REGB; i++) printf("%c", mem[REGA + i]);
+  if (TRACE_CALLS || TRACE_SYSCALLS) printf("\n");
 }
 void syscall_log() {
+  if (TRACE_SYSCALLS) printf("syscall log(%lx, %ld)\n", REGA, REGB);
   for (int i = 0; i < REGB; i++) fprintf(stderr, "%c", mem[REGA + i]);
+  if (TRACE_CALLS || TRACE_SYSCALLS) fprintf(stderr, "\n");
 }
 void syscall_create() {
-  char filename[REGB];
+  if (TRACE_SYSCALLS) printf("syscall create(%lx, %ld)\n", REGA, REGB);
+  char filename[REGB + 1];
   for (int i = 0; i < REGB; i++) filename[i] = mem[REGA + i];
   filename[REGB] = 0;
   REGA = (Word)fopen(filename, "w+");
 }
 void syscall_open_reading() {
-  char filename[REGB];
+  if (TRACE_SYSCALLS) printf("syscall open_reading(%lx, %ld)\n", REGA, REGB);
+  char filename[REGB + 1];
   for (int i = 0; i < REGB; i++) filename[i] = mem[REGA + i];
   filename[REGB] = 0;
   printf("opening filename %s\n", filename);
   REGA = (Word)fopen(filename, "r");
 }
 void syscall_open_writing() {
-  char filename[REGB];
+  if (TRACE_SYSCALLS) printf("syscall open_writing(%lx, %ld)\n", REGA, REGB);
+  char filename[REGB + 1];
   for (int i = 0; i < REGB; i++) filename[i] = mem[REGA + i];
   filename[REGB] = 0;
   REGA = (Word)fopen(filename, "w+");
 }
-void syscall_read() { REGA = fread(mem + REGB, 1, REGC, (FILE*)REGA); }
+void syscall_read() {
+  if (TRACE_SYSCALLS) printf("syscall read(%ld, %lx, %ld)\n", REGA, REGB, REGC);
+  REGA = fread(mem + REGB, 1, REGC, (FILE*)(mem + REGA));
+}
 void syscall_write() {
+  if (TRACE_SYSCALLS) printf("syscall write(%ld, %lx, %ld)\n", REGA, REGB, REGC);
   // TODO: assert that this worked
-  fwrite(mem + REGB, 1, REGC, (FILE*)REGA);
+  fwrite(mem + REGB, 1, REGC, (FILE*)(mem + REGA));
 }
 void syscall_close() {
+  if (TRACE_SYSCALLS) printf("syscall close(%ld)\n", REGA);
   // TODO: assert that this worked
-  fclose((FILE*)REGA);
+  fclose((FILE*)(mem + REGA));
 }
 
 void init_vm(Byte* bin, int bin_len, int argc, char** argv) {
@@ -205,7 +222,7 @@ void init_vm(Byte* bin, int bin_len, int argc, char** argv) {
 void dump_reg() {
   printf(
     "ip = %lx, sp = %lx, st = %lx, a = %lx, b = %lx, c = %lx, d = %lx, e = "
-    "%lx\n", reg[0], reg[1], reg[2], reg[3], reg[4], reg[5], reg[6], reg[7]);
+    "%lx, f = %lx\n", ip, SP, ST, REGA, REGB, REGC, REGD, REGE, REGF);
 }
 
 typedef Byte Reg; // 4 bits would actually be enough, but meh
@@ -215,7 +232,6 @@ void run_single() {
   #define REG2 reg[byte_code[ip + 1] >> 4]
 
   Byte opcode = byte_code[ip];
-  // printf("ip %lx has opcode %x\n", ip, opcode);
   switch (opcode) {
     case 0x00: dump_and_panic("halted"); ip += 1; break; // nop
     case 0xe0: dump_and_panic("panicked"); return; // panic
@@ -259,15 +275,12 @@ void run_single() {
       }
 
       Word return_target = ip + 9;
-      SP -= 8; *(Word*)(mem + SP) = return_target;
       call_stack[call_stack_len] = return_target; call_stack_len++;
       ip = *(Word*)(byte_code + ip + 1); break; // call
     }
     case 0xf3: { // ret
-      ip = *(Word*)(mem + SP); SP += 8;
       call_stack_len--;
-      if (call_stack[call_stack_len] != ip)
-        dump_and_panic("stack corrupted");
+      ip = call_stack[call_stack_len];
       break;
     }
     case 0xf4: syscall_handlers[byte_code[ip + 1]](); ip += 2; break; // syscall
@@ -287,6 +300,10 @@ void run_single() {
     case 0xb2: REG1 ^= REG2; ip += 2; break; // xor
     case 0xb3: REG1 = ~REG1; ip += 2; break; // not
     default: dump_and_panic("invalid instruction"); return;
+  }
+  if (TRACE_INSTRUCTIONS) {
+    printf("ran %x -> ", opcode);
+    dump_reg();
   }
 }
 
