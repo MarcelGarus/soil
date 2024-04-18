@@ -1,5 +1,7 @@
 .vscode/
-.assemble
-.soil
-.soil-c
+
+assemble
+soil-asm
+soil-c
+
 rust/target
