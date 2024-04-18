@@ -584,6 +584,12 @@ compile_binary:
   }
   macro emit_add_r8_8 { emit_bytes 49h, 83h, 0c0h, 08h } ; add r8, 8
   macro emit_add_rax_rbp { emit_bytes 48h, 01h, 0e8h } ; mov rax, rbp
+  macro emit_and_soil_0xff a {
+    emit_bytes 49h, 81h
+    emit_value_plus_a 0e0h, a
+    emit_bytes 0ffh, 00h, 00h, 00h
+  }
+  macro emit_and_r9_0xff { emit_bytes 49h, 81h, 0e1h, 0ffh, 00h, 00h, 00h } ; and r9, 0xff
   macro emit_and_rax_ff { emit_bytes 48h, 25h, 0ffh, 00h, 00h, 00h } ; and rax, 0ffh
   macro emit_and_soil_soil a, b { ; and <a>, <b>
     emit_bytes 4dh, 21h
@@ -698,7 +704,6 @@ compile_binary:
   }
   macro emit_sub_r8_8 { emit_bytes 49h, 83h, 0e8h, 08h } ; sub r8, 8
   macro emit_test_r9_r9 { emit_bytes 4dh, 85h, 0c9h } ; test r9, r9
-  macro emit_xor_r9_r9 { emit_bytes 4dh, 31h, 0c9h } ; xor r9, r9
   macro emit_xor_rdx_rdx { emit_bytes 48h, 31h, 0d2h } ; xor rdx, rdx
   macro emit_xor_soil_soil a, b { ; xor <a>, <b>
     emit_bytes 4dh, 31h
@@ -728,9 +733,8 @@ compile_binary:
           emit_mov_soil_mem_of_rdp_plus_soil dil, sil ; mov <to>, [rbp + <from>]
           jmp .parse_instruction
 .loadb:   eat_regs_into_dil_sil
-          mov r14b, dil
-          emit_xor_soil_soil dil, r14b  ; xor <to>, <to>
           emit_mov_soilb_mem_of_rbp_plus_soil dil, sil ; mov <to>b, [rbp + <from>]
+          emit_and_soil_0xff dil        ; and <to>, 0ffh
           jmp .parse_instruction
 .store:   eat_regs_into_dil_sil
           emit_mov_mem_of_rbp_plus_soil_soil dil, sil ; mov [rbp + <to>], <from>
@@ -771,18 +775,18 @@ compile_binary:
           emit_sub_soil_soil bl, sil    ; sub r9, <right>
           jmp .parse_instruction
 .isequal: emit_test_r9_r9               ; test r9, r9
-          emit_xor_r9_r9                ; xor r9, r9
           emit_sete_r9b                 ; sete r9b
+          emit_and_r9_0xff              ; and r9, 0fh
           jmp .parse_instruction
 .isless:  emit_shr_r9_63                ; shr r9, 63
           jmp .parse_instruction
 .isgreater: emit_test_r9_r9             ; test r9, r9
-          emit_xor_r9_r9                ; xor r9, r9
           emit_setg_r9b                 ; setg r9b
+          emit_and_r9_0xff              ; and r9, 0fh
           jmp .parse_instruction
 .islessequal: emit_test_r9_r9           ; test r9, r9
-          emit_xor_r9_r9                ; xor r9, r9
           emit_setle_r9b                ; setle r9b
+          emit_and_r9_0xff              ; and r9, 0fh
           jmp .parse_instruction
 .isgreaterequal: emit_not_r9            ; not r9
           emit_shr_r9_63                ; shr r9, 63
