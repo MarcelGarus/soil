@@ -34,7 +34,13 @@ jmp main
 ; > rax
 ; ~ rcx, r11: https://stackoverflow.com/questions/69515893/when-does-linux-x86-64-syscall-clobber-r8-r9-and-r10
 
-; Prints something.
+macro exit status {
+  mov rax, 60
+  mov rdi, status
+  syscall
+}
+
+; Prints something to stdout.
 ; < rax: pointer to string
 ; < rbx: length of string
 ; ~ rax
@@ -52,14 +58,26 @@ print:
   pop rdi
   ret
 
+macro eprint msg, len {
+  push rdi
+  push rcx
+  push r11
+  mov rax, 1 ; write
+  mov rdi, 2 ; stderr
+  mov rsi, msg
+  mov rdx, len
+  syscall
+  pop r11
+  pop rcx
+  pop rdi
+}
+
 ; Panics with a message. Doesn't return.
 ; < rax: pointer to message
 ; < rbx: length of message
 panic:
   call print
-  mov rax, 60
-  mov rdi, 1
-  syscall
+  exit 1
 macro panic msg, len {
   mov rax, msg
   mov rbx, len
@@ -714,7 +732,7 @@ compile_binary:
           panic str_unknown_opcode, str_unknown_opcode.len
 .nop:     emit_nop                      ; nop
           jmp .parse_instruction
-.panic:   emit_jmp_to_comptime panic_with_stack_trace
+.panic:   emit_jmp_to_comptime panic_with_info
           jmp .parse_instruction
 .move:    eat_regs_into_dil_sil
           emit_mov_soil_soil dil, sil   ; mov <to>, <from>
@@ -831,8 +849,50 @@ compile_binary:
 ; Panic with stack trace
 ; ======================
 
-panic_with_stack_trace:
-  panic str_vm_panicked, str_vm_panicked.len
+panic_with_info:
+  eprint str_vm_panicked, str_vm_panicked.len
+
+  ; The stack
+  eprint str_stack_intro, str_stack_intro.len
+  ; dbg: jmp dbg
+.print_all_stack_entries:
+  pop rax
+  cmp rax, label_after_call_to_jit
+  je .done_printing_stack
+  call .print_stack_entry
+  jmp .print_all_stack_entries
+.print_stack_entry:
+  eprint str_foo, str_foo.len
+  ;printf("%8lx ", pos);
+;   for (int j = labels.len - 1; j >= 0; j--)
+;     if (labels.entries[j].pos <= pos) {
+;       for (int k = 0; k < labels.entries[j].len; k++)
+;         printf("%c", labels.entries[j].label[k]);
+;       break;
+;     }
+;   printf("\n");
+  ret
+.done_printing_stack:
+
+  ; The registers
+  ; printf("Registers:\n");
+  ; printf("sp = %8ld %8lx\n", SP, SP);
+  ; printf("st = %8ld %8lx\n", ST, ST);
+  ; printf("a  = %8ld %8lx\n", REGA, REGA);
+  ; printf("b  = %8ld %8lx\n", REGB, REGB);
+  ; printf("c  = %8ld %8lx\n", REGC, REGC);
+  ; printf("d  = %8ld %8lx\n", REGD, REGD);
+  ; printf("e  = %8ld %8lx\n", REGE, REGE);
+  ; printf("f  = %8ld %8lx\n", REGF, REGF);
+  ; printf("\n");
+
+  ; The memory
+  ; FILE* dump = fopen("crash", "w+");
+  ; fwrite(mem, 1, MEMORY_SIZE, dump);
+  ; fclose(dump);
+  ; printf("Memory dumped to crash.\n");
+
+  exit 1
 
 
 ; Running the code
@@ -857,18 +917,17 @@ run:
   mov rbp, [memory]
   ; Jump into the machine code
   call qword [machine_code]
-  mov rax, 60
-  mov rdi, 0
-  syscall
+  ; When we dump the stack at a panic, we know we reached to root of the VM
+  ; calls when we see this label on the call stack.
+  label_after_call_to_jit:
+  exit 0
 
 main:
   call init_heap
   call load_binary
   call compile_binary
   call run
-  mov rax, 60
-  mov rdi, 0
-  syscall
+  exit 0
 
 
 ; Syscalls
@@ -1004,6 +1063,8 @@ str_magic_bytes_mismatch: db "magic bytes don't match", 0xa
   .len = ($ - str_magic_bytes_mismatch)
 str_oom: db "Out of memory", 0xa
   .len = ($ - str_oom)
+str_stack_intro: db "Stack:", 0xa
+  .len = ($ - str_stack_intro)
 str_todo: db "Todo", 0xa
   .len = ($ - str_todo)
 str_unknown_opcode: db "unknown opcode xx", 0xa
@@ -1011,7 +1072,7 @@ str_unknown_opcode: db "unknown opcode xx", 0xa
   .hex_offset = (.len - 3)
 str_unknown_syscall: db "unknown syscall", 0xa
   .len = ($ - str_unknown_syscall)
-str_vm_panicked: db "Oh no! The program panicked.", 0xa
+str_vm_panicked: db 0xa, "Oh no! The program panicked.", 0xa, 0xa
   .len = ($ - str_vm_panicked)
 
 ; The entire content of the .soil file.
