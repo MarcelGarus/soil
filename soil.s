@@ -389,17 +389,25 @@ compile_binary:
   ; This Soil interpreter only supports 4 GiB of code, which should be enough
   ; for most programs (this is not a limit of the memory it uses, only of the
   ; machine code). As a result, we use 4 bytes for indexing into the code.
-  ; - The instruction mapping maps byte offsets of the byte code into byte
-  ;   offsets in the machine code. It's sized 4*len(byte code) and uses 4 bytes
-  ;   per each byte. Not every byte in that array is meaningful, only the ones
-  ;   where a byte code instruction starts.
+  ;
+  ; Apart from generating machine code, we also create the following:
+  ;
+  ; - A map from byte code offsets to machine code offsets. It's sized
+  ;   4*len(byte code + 1). For every byte code byte, it stores a uint32 offset
+  ;   into the machine code. Only the entries where byte code instructions start
+  ;   are meaningful. TODO: change that.
+  ; - A map from machine code offsets to byte code offsets. It's sized
+  ;   4*len(byte code + 1)
   ; - Patches for jumps store a position in the machine code (4 bytes) and a
   ;   target in the byte code (4 bytes). Because a jump instruction in the byte
   ;   code takes an 8 byte target argument, allocating len(byte code) for
   ;   patches is enough.
   lea rax, [r11 * 4 + 4] ; for now, r11 is still the length of the byte code
   call malloc
-  mov [instruction_mapping], rax
+  mov [byte_code_to_machine_code], rax
+  lea rax, [r11 * 8 + 4] ; TODO: this is only a rough guess
+  call malloc
+  mov [machine_code_to_byte_code], rax
   mov rax, r11
   call malloc
   mov [patches], rax
@@ -410,15 +418,21 @@ compile_binary:
   mov [machine_code], rax
 
 .parse_instruction:
-  ; Add a mapping from byte code to x86_64 machine code instruction.
-  ; instruction_mapping[4 * (byte code cursor - byte code start)] = machine code cursor
+  ; Add mappings between byte code and machine code.
   mov r12, r8  ; byte code cursor
-  sub r12, r10 ; byte code cursor - byte code start
-  shl r12, 2   ; 4 * (byte code cursor - byte code start)
-  add r12, [instruction_mapping] ; instruction_mapping[4 * (byte code cursor - byte code start)]
-  mov r13, [my_heap.head]
-  sub r13, [machine_code]
-  mov [r12], r13d
+  sub r12, r10 ; byte code offset = byte code cursor - byte code start
+  mov r13, [my_heap.head] ; machine code cursor
+  sub r13, [machine_code] ; machine code offset = machine code cursor - machine code start
+  ; byte_code_to_machine_code[4 * byte code offset] = machine code offset
+  mov r14, r12 ; byte code offset
+  shl r14, 2   ; 4 * byte code offset
+  add r14, [byte_code_to_machine_code] ; byte_code_to_machine_code[4 * byte code offset]
+  mov [r14], r13d
+  ; machine_code_to_byte_code[4 * machine code offset] = byte code offset
+  mov r14, r13 ; machine code offset
+  shl r14, 2   ; 4 * machine code offset
+  add r14, [machine_code_to_byte_code] ; machine_code_to_byte_code[4 * machine code offset]
+  mov [r14], r12d
 
   cmp r8, r11
   jge .done_parsing_instructions
@@ -451,7 +465,7 @@ compile_binary:
   mov r14, 0
   mov r14d, [r13] ; index into the byte code
   shl r14, 2
-  add r14, [instruction_mapping]
+  add r14, [byte_code_to_machine_code]
   mov r13, 0
   mov r13d, [r14] ; index into the machine code
   add r13, [machine_code] ; absolute target
@@ -1088,7 +1102,11 @@ machine_code:
 ; A mapping from bytes of the byte code to the byte-index in the machine code.
 ; Not all of these bytes are valid, only the ones that are at the start of a
 ; byte code instruction.
-instruction_mapping:
+byte_code_to_machine_code:
+  dq 0
+  .len: dq 0
+
+machine_code_to_byte_code:
   dq 0
   .len: dq 0
 
