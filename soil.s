@@ -34,6 +34,21 @@ jmp main
 ; > rax
 ; ~ rcx, r11: https://stackoverflow.com/questions/69515893/when-does-linux-x86-64-syscall-clobber-r8-r9-and-r10
 
+macro push_syscall_clobbers {
+  push rax
+  push rdi
+  push rsi
+  push rcx
+  push r11
+}
+macro pop_syscall_clobbers {
+  pop r11
+  pop rcx
+  pop rsi
+  pop rdi
+  pop rax
+}
+
 macro exit status {
   mov rax, 60
   mov rdi, status
@@ -43,33 +58,37 @@ macro exit status {
 ; Prints something to stdout.
 ; < rax: pointer to string
 ; < rbx: length of string
-; ~ rax
 print:
-  push rdi
-  push rcx
-  push r11
+  push_syscall_clobbers
   mov rsi, rax
   mov rax, 1 ; write
   mov rdi, 1 ; stdout
   mov rdx, rbx
   syscall
-  pop r11
-  pop rcx
-  pop rdi
+  pop_syscall_clobbers
   ret
 
-macro eprint msg, len {
-  push rdi
-  push rcx
-  push r11
+; Prints something to stderr.
+; < rax: pointer to string
+; < rbx: length of string
+eprint:
+  push_syscall_clobbers
+  mov rsi, rax
+  mov rax, 1 ; write
+  mov rdi, 2 ; stderr
+  mov rdx, rbx
+  syscall
+  pop_syscall_clobbers
+  ret
+
+macro eprint msg, len { ; msg can't be rdi or rsi. len can't be rdi, rsi, rdx
+  push_syscall_clobbers
   mov rax, 1 ; write
   mov rdi, 2 ; stderr
   mov rsi, msg
   mov rdx, len
   syscall
-  pop r11
-  pop rcx
-  pop rdi
+  pop_syscall_clobbers
 }
 
 ; Panics with a message. Doesn't return.
@@ -354,6 +373,9 @@ compile_binary:
   ; type: initial memory
   cmp r10b, 1
   je .parse_initial_memory
+  ; type: labels
+  cmp r10b, 3
+  je .parse_labels
   ; type: unknown
   add r8, r11 ; skip section
   jmp .parse_section
@@ -363,8 +385,8 @@ compile_binary:
 
 ; Copies the initial memory into the actual memory section.
 .parse_initial_memory:
-  mov r10, r8 ; end of the initial memory
-  add r10, r11
+  mov r10, r8
+  add r10, r11 ; end of the initial memory
   ; TODO: assert that initial memory fits into memory
   mov r12, [memory] ; cursor through the memory
   ; r8 is the cursor, r10 the end
@@ -376,6 +398,35 @@ compile_binary:
   inc r8
   inc r12
   jmp .copy_memory_loop
+
+; Loads all the labels.
+.parse_labels:
+; .dbg: jmp .dbg
+  eat_word r10 ; number of labels
+  mov [labels.len], r10
+  mov rax, r10
+  imul rax, 24
+  call malloc
+  mov [labels], rax
+  mov r11, 0 ; the number of labels we have already parsed
+.parse_label:
+  cmp r11, r10
+  je .done_parsing_labels
+  eat_word r12 ; byte code offset
+  eat_word r13 ; length
+  ; save the label to the labels
+  mov r15, r11
+  imul r15, 24
+  add r15, [labels]
+  mov [r15], r12
+  mov [r15 + 8], r8
+  mov [r15 + 16], r13
+  add r8, r13 ; label length
+  ; next one
+  inc r11
+  jmp .parse_label
+.done_parsing_labels:
+  jmp .parse_section
 
 ; JIT compiles the byte code into x86_64 machine code.
 ;
@@ -416,32 +467,42 @@ compile_binary:
   ; be aligned to page boundaries.
   call advance_heap_to_next_page
   mov [machine_code], rax
-
 .parse_instruction:
-  ; Add mappings between byte code and machine code.
-  mov r12, r8  ; byte code cursor
-  sub r12, r10 ; byte code offset = byte code cursor - byte code start
-  mov r13, [my_heap.head] ; machine code cursor
-  sub r13, [machine_code] ; machine code offset = machine code cursor - machine code start
-  ; byte_code_to_machine_code[4 * byte code offset] = machine code offset
-  mov r14, r12 ; byte code offset
-  shl r14, 2   ; 4 * byte code offset
-  add r14, [byte_code_to_machine_code] ; byte_code_to_machine_code[4 * byte code offset]
-  mov [r14], r13d
-  ; machine_code_to_byte_code[4 * machine code offset] = byte code offset
-  mov r14, r13 ; machine code offset
-  shl r14, 2   ; 4 * machine code offset
-  add r14, [machine_code_to_byte_code] ; machine_code_to_byte_code[4 * machine code offset]
-  mov [r14], r12d
-
   cmp r8, r11
-  jge .done_parsing_instructions
+  jge .done_parsing_all_instructions
   mov r12, 0
   eat_byte r12b
   mov r13, [.jump_table + r12 * 8]
   jmp r13
-
-.done_parsing_instructions:
+.instruction_parsed:
+  ; Add mappings between byte code and machine code.
+  mov r12, [byte_code_to_machine_code.len] ; byte code offset
+  mov r13, [machine_code_to_byte_code.len] ; machine code offset
+.add_mappings_byte_to_machine_code:
+  mov r14, [byte_code_to_machine_code.len]
+  mov r15, r8
+  sub r15, r10 ; byte code offset of next instruction
+  cmp r14, r15
+  jge .add_mappings_machine_to_byte_code
+  lea r15, [r14 * 4]
+  add r15, [byte_code_to_machine_code]
+  mov [r15], r13
+  inc r14
+  mov [byte_code_to_machine_code.len], r14
+  jmp .add_mappings_byte_to_machine_code
+.add_mappings_machine_to_byte_code:
+  mov r14, [machine_code_to_byte_code.len]
+  mov r15, [my_heap.head]
+  sub r15, [machine_code]
+  cmp r14, r15
+  jge .parse_instruction
+  lea r15, [r14 * 4]
+  add r15, [machine_code_to_byte_code]
+  mov [r15], r12
+  inc r14
+  mov [machine_code_to_byte_code.len], r14
+  jmp .add_mappings_machine_to_byte_code
+.done_parsing_all_instructions:
   mov r10, [my_heap.head]
   sub r10, [machine_code]
   mov [machine_code.len], r10
@@ -631,7 +692,7 @@ compile_binary:
     emit_byte 0e8h
     emit_relative_patch target
   }
-  macro emit_call_to_comptime target { ; jmp <target> ; target can't be r12 or rax
+  macro emit_call_comptime target { ; call <target> ; target can't be r12 or rax
     emit_byte 0e8h
     mov r12, target
     sub r12, [my_heap.head]
@@ -745,119 +806,119 @@ compile_binary:
 .invalid: replace_two_bytes_with_hex_byte (str_unknown_opcode + str_unknown_opcode.hex_offset), r12b
           panic str_unknown_opcode, str_unknown_opcode.len
 .nop:     emit_nop                      ; nop
-          jmp .parse_instruction
-.panic:   emit_jmp_to_comptime panic_with_info
-          jmp .parse_instruction
+          jmp .instruction_parsed
+.panic:   emit_call_comptime panic_with_info ; call panic_with_info
+          jmp .instruction_parsed
 .move:    eat_regs_into_dil_sil
           emit_mov_soil_soil dil, sil   ; mov <to>, <from>
-          jmp .parse_instruction
+          jmp .instruction_parsed
 .movei:   eat_reg_into_dil
           eat_word r12
           emit_mov_soil_word dil, r12   ; mov <to>, <word>
-          jmp .parse_instruction
+          jmp .instruction_parsed
 .moveib:  eat_reg_into_dil
           eat_byte r12b
           mov sil, dil
           emit_xor_soil_soil dil, sil   ; xor <to>, <to>
           emit_mov_soil_byte dil, r12b  ; mov <to>b, <byte>
-          jmp .parse_instruction
+          jmp .instruction_parsed
 .load:    eat_regs_into_dil_sil
           emit_mov_soil_mem_of_rdp_plus_soil dil, sil ; mov <to>, [rbp + <from>]
-          jmp .parse_instruction
+          jmp .instruction_parsed
 .loadb:   eat_regs_into_dil_sil
           emit_mov_soilb_mem_of_rbp_plus_soil dil, sil ; mov <to>b, [rbp + <from>]
           emit_and_soil_0xff dil        ; and <to>, 0ffh
-          jmp .parse_instruction
+          jmp .instruction_parsed
 .store:   eat_regs_into_dil_sil
           emit_mov_mem_of_rbp_plus_soil_soil dil, sil ; mov [rbp + <to>], <from>
-          jmp .parse_instruction
+          jmp .instruction_parsed
 .storeb:  eat_regs_into_dil_sil
           emit_mov_mem_of_rbp_plus_soil_soilb dil, sil ; mov [rbp + <to>], <from>b
-          jmp .parse_instruction
+          jmp .instruction_parsed
 .push:    eat_reg_into_dil
           emit_sub_r8_8                 ; sub r8, 8
           mov sil, 0 ; sp
           emit_mov_mem_of_rbp_plus_soil_soil sil, dil ; mov [rbp + r8], <from>
-          jmp .parse_instruction
+          jmp .instruction_parsed
 .pop:     eat_reg_into_dil
           mov sil, 0 ; sp
           emit_mov_soil_mem_of_rdp_plus_soil dil, sil ; mov <a>, [rbp + r8]
           emit_add_r8_8                 ; add r8, 8
-          jmp .parse_instruction
+          jmp .instruction_parsed
 .jump:    eat_word r14
           emit_jmp r14                  ; jmp <target>
-          jmp .parse_instruction
+          jmp .instruction_parsed
 .cjump:   eat_word r14
           emit_test_r9_r9               ; test r9, r9
           emit_jnz r14                  ; jmp <target>
-          jmp .parse_instruction
+          jmp .instruction_parsed
 .call:    eat_word r14
           emit_call r14                 ; call <target>
-          jmp .parse_instruction
+          jmp .instruction_parsed
 .ret:     emit_ret                      ; ret
-          jmp .parse_instruction
+          jmp .instruction_parsed
 .syscall: mov r14, 0
           eat_byte r14b
           mov r14, [syscalls.table + 8 * r14]
-          emit_call_to_comptime r14     ; call <syscall>
-          jmp .parse_instruction
+          emit_call_comptime r14     ; call <syscall>
+          jmp .instruction_parsed
 .cmp:     eat_regs_into_dil_sil
           mov bl, 1 ; st = r9
           emit_mov_soil_soil bl, dil    ; mov r9, <left>
           emit_sub_soil_soil bl, sil    ; sub r9, <right>
-          jmp .parse_instruction
+          jmp .instruction_parsed
 .isequal: emit_test_r9_r9               ; test r9, r9
           emit_sete_r9b                 ; sete r9b
           emit_and_r9_0xff              ; and r9, 0fh
-          jmp .parse_instruction
+          jmp .instruction_parsed
 .isless:  emit_shr_r9_63                ; shr r9, 63
-          jmp .parse_instruction
+          jmp .instruction_parsed
 .isgreater: emit_test_r9_r9             ; test r9, r9
           emit_setg_r9b                 ; setg r9b
           emit_and_r9_0xff              ; and r9, 0fh
-          jmp .parse_instruction
+          jmp .instruction_parsed
 .islessequal: emit_test_r9_r9           ; test r9, r9
           emit_setle_r9b                ; setle r9b
           emit_and_r9_0xff              ; and r9, 0fh
-          jmp .parse_instruction
+          jmp .instruction_parsed
 .isgreaterequal: emit_not_r9            ; not r9
           emit_shr_r9_63                ; shr r9, 63
-          jmp .parse_instruction
+          jmp .instruction_parsed
 .add:     eat_regs_into_dil_sil
           emit_add_soil_soil dil, sil   ; add <to>, <from>
-          jmp .parse_instruction
+          jmp .instruction_parsed
 .sub:     eat_regs_into_dil_sil
           emit_sub_soil_soil dil, sil   ; sub <to>, <from>
-          jmp .parse_instruction
+          jmp .instruction_parsed
 .mul:     eat_regs_into_dil_sil
           emit_imul_soil_soil dil, sil  ; imul <to>, <from>
-          jmp .parse_instruction
+          jmp .instruction_parsed
 .div:     eat_regs_into_dil_sil
           ; idiv implicitly divides rdx:rax by the operand. rax -> quotient
           emit_xor_rdx_rdx              ; xor rdx, rdx
           emit_mov_rax_soil dil         ; mov rax, <to>
           emit_idiv_soil sil            ; idiv <from>
           emit_mov_soil_rax dil         ; mov <to>, rax
-          jmp .parse_instruction
+          jmp .instruction_parsed
 .rem:     eat_regs_into_dil_sil
           ; idiv implicitly divides rdx:rax by the operand. rdx -> remainder
           emit_xor_rdx_rdx              ; xor rdx, rdx
           emit_mov_rax_soil dil         ; mov rax, <to>
           emit_idiv_soil sil            ; idiv <from>
           emit_mov_soil_rdx dil         ; mov <to>, rdx
-          jmp .parse_instruction
+          jmp .instruction_parsed
 .and:     eat_regs_into_dil_sil
           emit_and_soil_soil dil, sil   ; and <to>, <from>
-          jmp .parse_instruction
+          jmp .instruction_parsed
 .or:      eat_regs_into_dil_sil
           emit_or_soil_soil dil, sil    ; or <to>, <from>
-          jmp .parse_instruction
+          jmp .instruction_parsed
 .xor:     eat_regs_into_dil_sil
           emit_xor_soil_soil dil, sil   ; xor <to>, <from>
-          jmp .parse_instruction
+          jmp .instruction_parsed
 .not:     eat_reg_into_dil
           emit_not_soil dil             ; not <to>
-          jmp .parse_instruction
+          jmp .instruction_parsed
 
 
 ; Panic with stack trace
@@ -870,21 +931,42 @@ panic_with_info:
   eprint str_stack_intro, str_stack_intro.len
   ; dbg: jmp dbg
 .print_all_stack_entries:
+  ; .dbg: jmp .dbg
   pop rax
   cmp rax, label_after_call_to_jit
   je .done_printing_stack
   call .print_stack_entry
   jmp .print_all_stack_entries
-.print_stack_entry:
-  eprint str_foo, str_foo.len
-  ;printf("%8lx ", pos);
-;   for (int j = labels.len - 1; j >= 0; j--)
-;     if (labels.entries[j].pos <= pos) {
-;       for (int k = 0; k < labels.entries[j].len; k++)
-;         printf("%c", labels.entries[j].label[k]);
-;       break;
-;     }
-;   printf("\n");
+.print_stack_entry: ; absolute machine code address is in rax
+  mov rbx, rax
+  sub rbx, [machine_code]
+  imul rbx, 4
+  add rbx, [machine_code_to_byte_code]
+  mov rax, [rbx] ; byte code offset
+  ; find the corresponding label by iterating all the labels from the back
+  mov rcx, [labels.len]
+.finding_label:
+  cmp rcx, 0
+  je .no_label_matches
+  dec rcx
+  mov rdx, rcx
+  imul rdx, 24
+  add rdx, [labels] ; rdx is now a pointer to the label entry (byte code offset, label pointer, len)
+  mov rdi, [rdx] ; load the byte code offset of the label
+  cmp rdi, rax ; is this label before our stack trace byte code offset?
+  jg .finding_label ; nope
+  ; it matches! print it
+  push rax
+  push rbx
+  mov rax, [rdx + 8] ; pointer to the label string
+  mov rbx, [rdx + 16] ; length of the label
+  call eprint
+  eprint str_newline, 1
+  pop rbx
+  pop rax
+  ret
+.no_label_matches:
+  eprint str_no_label, str_no_label.len
   ret
 .done_printing_stack:
 
@@ -929,6 +1011,7 @@ run:
   mov r14, 0 ; e
   mov r15, 0 ; f
   mov rbp, [memory]
+  ; .dbg: jmp .dbg
   ; Jump into the machine code
   call qword [machine_code]
   ; When we dump the stack at a panic, we know we reached to root of the VM
@@ -962,13 +1045,6 @@ syscalls:
 
 .unknown:
   panic str_unknown_syscall, str_unknown_syscall.len
-
-macro push_syscall_clobbers {
-  push r11
-}
-macro pop_syscall_clobbers {
-  pop r11
-}
 
 .exit:
   mov rax, 60 ; exit syscall
@@ -1075,6 +1151,9 @@ str_foo: db "foo", 0xa
   .len = ($ - str_foo)
 str_magic_bytes_mismatch: db "magic bytes don't match", 0xa
   .len = ($ - str_magic_bytes_mismatch)
+str_newline: db 0xa
+str_no_label: db "<no label>", 0xa
+  .len = ($ - str_no_label)
 str_oom: db "Out of memory", 0xa
   .len = ($ - str_oom)
 str_stack_intro: db "Stack:", 0xa
@@ -1120,3 +1199,11 @@ patches:
 memory:
   dq 0
   .len: dq memory_size
+
+; Labels. For each label, it saves three things:
+; - the offset in the byte code
+; - a pointer to the label string
+; - the length of the label string
+labels:
+  dq 0
+  .len: dq 0 ; the number of labels, not the amount of bytes
