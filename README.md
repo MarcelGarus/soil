@@ -117,11 +117,12 @@ Soil binaries are stuctured like this:
   - section type `2`
   - length (8 bytes)
   - content (length parsed above)
-- debug information
+- labels
   - section type `3`
   - length (8 bytes)
-  - number of debug information items (position + label)
-    - position in the machine code (8 bytes)
+  - number of labels (position + label)
+  - for each label:
+    - position in the byte code (8 bytes)
     - label length (8 bytes)
     - label (length parsed above)
 - description
