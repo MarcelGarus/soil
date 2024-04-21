@@ -20,7 +20,7 @@ format ELF64 executable
 
 segment readable executable
 
-memory_size = 1000
+memory_size = 1000000
 
 jmp main
 
@@ -938,11 +938,22 @@ panic_with_info:
   call .print_stack_entry
   jmp .print_all_stack_entries
 .print_stack_entry: ; absolute machine code address is in rax
+  ; If a machine code offset is on the stack, then this refers to the
+  ; instruction _after_ the call instruction (the instruction that will be
+  ; returned to). To get the original call instruction, we need to look at the
+  ; previous instruction. We can do so by mapping the byte before the current
+  ; instruction. That's safe to do because the first byte of the machine code
+  ; can never be a return target (that would imply that there's another
+  ; instruction before it that called something).
   mov rbx, rax
+  dec rbx ; to compensate for what's described above
   sub rbx, [machine_code]
+  cmp rbx, [machine_code.len]
+  jg .outside_of_byte_code
   imul rbx, 4
   add rbx, [machine_code_to_byte_code]
-  mov rax, [rbx] ; byte code offset
+  mov rax, 0
+  mov eax, [rbx] ; byte code offset
   ; find the corresponding label by iterating all the labels from the back
   mov rcx, [labels.len]
 .finding_label:
@@ -965,6 +976,8 @@ panic_with_info:
   pop rbx
   pop rax
   ret
+.outside_of_byte_code:
+  eprint str_outside_of_byte_code, str_outside_of_byte_code.len
 .no_label_matches:
   eprint str_no_label, str_no_label.len
   ret
@@ -1156,6 +1169,8 @@ str_no_label: db "<no label>", 0xa
   .len = ($ - str_no_label)
 str_oom: db "Out of memory", 0xa
   .len = ($ - str_oom)
+str_outside_of_byte_code: db "<outside of byte code>", 0xa
+  .len = ($ - str_outside_of_byte_code)
 str_stack_intro: db "Stack:", 0xa
   .len = ($ - str_stack_intro)
 str_todo: db "Todo", 0xa
