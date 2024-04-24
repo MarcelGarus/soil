@@ -2,14 +2,24 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 
 #define MEMORY_SIZE 0x1000000
 #define TRACE_INSTRUCTIONS 0
 #define TRACE_CALLS 0
 #define TRACE_SYSCALLS 0
 
-void panic(int exit_code, char* msg) {
-  printf("%s\n", msg);
+void eprintf(const char* fmt, ...) {
+  va_list args;
+  va_start(args, fmt);
+  vfprintf(stderr, fmt, args);
+  va_end(args);
+}
+void panic(int exit_code, const char* fmt, ...) {
+  va_list args;
+  va_start(args, fmt);
+  vfprintf(stderr, fmt, args);
+  va_end(args);
   exit(exit_code);
 }
 
@@ -50,36 +60,40 @@ LabelAndPos find_label(Word pos) {
   return lap;
 }
 void print_stack_entry(Word pos) {
-  printf("%8lx ", pos);
+  eprintf("%8lx ", pos);
   for (int j = labels.len - 1; j >= 0; j--)
     if (labels.entries[j].pos <= pos) {
       for (int k = 0; k < labels.entries[j].len; k++)
-        printf("%c", labels.entries[j].label[k]);
+        eprintf("%c", labels.entries[j].label[k]);
       break;
     }
-  printf("\n");
+  eprintf("\n");
 }
-void dump_and_panic(char* msg) {
-  printf("%s\n", msg);
-  printf("\n");
-  printf("Stack:\n");
-  for (int i = 0; i < call_stack_len; i++) print_stack_entry(call_stack[i]);
+void dump_and_panic(char* fmt, ...) {
+  va_list args;
+  va_start(args, fmt);
+  vfprintf(stderr, fmt, args);
+  va_end(args);
+
+  eprintf("\n");
+  eprintf("Stack:\n");
+  for (int i = 0; i < call_stack_len; i++) print_stack_entry(call_stack[i] - 1);
   print_stack_entry(ip);
-  printf("\n");
-  printf("Registers:\n");
-  printf("sp = %8ld %8lx\n", SP, SP);
-  printf("st = %8ld %8lx\n", ST, ST);
-  printf("a  = %8ld %8lx\n", REGA, REGA);
-  printf("b  = %8ld %8lx\n", REGB, REGB);
-  printf("c  = %8ld %8lx\n", REGC, REGC);
-  printf("d  = %8ld %8lx\n", REGD, REGD);
-  printf("e  = %8ld %8lx\n", REGE, REGE);
-  printf("f  = %8ld %8lx\n", REGF, REGF);
-  printf("\n");
+  eprintf("\n");
+  eprintf("Registers:\n");
+  eprintf("sp = %8ld %8lx\n", SP, SP);
+  eprintf("st = %8ld %8lx\n", ST, ST);
+  eprintf("a  = %8ld %8lx\n", REGA, REGA);
+  eprintf("b  = %8ld %8lx\n", REGB, REGB);
+  eprintf("c  = %8ld %8lx\n", REGC, REGC);
+  eprintf("d  = %8ld %8lx\n", REGD, REGD);
+  eprintf("e  = %8ld %8lx\n", REGE, REGE);
+  eprintf("f  = %8ld %8lx\n", REGF, REGF);
+  eprintf("\n");
   FILE* dump = fopen("crash", "w+");
   fwrite(mem, 1, MEMORY_SIZE, dump);
   fclose(dump);
-  printf("Memory dumped to crash.\n");
+  eprintf("Memory dumped to crash.\n");
   exit(1);
 }
 
@@ -155,13 +169,13 @@ void init_vm(Byte* bin, int bin_len, int argc, char** argv) {
     }
   }
 
-  // printf("Memory:");
-  // for (int i = 0; i < MEMORY_SIZE; i++) printf(" %02x", mem[i]);
-  // printf("\n");
+  // eprintf("Memory:");
+  // for (int i = 0; i < MEMORY_SIZE; i++) eprintf(" %02x", mem[i]);
+  // eprintf("\n");
 }
 
 void dump_reg(void) {
-  printf(
+  eprintf(
     "ip = %lx, sp = %lx, st = %lx, a = %lx, b = %lx, c = %lx, d = %lx, e = "
     "%lx, f = %lx\n", ip, SP, ST, REGA, REGB, REGC, REGD, REGE, REGF);
 }
@@ -180,19 +194,19 @@ void run_single(void) {
     case 0xd1: REG1 = *(Word*)(byte_code + ip + 2); ip += 10; break; // movei
     case 0xd2: REG1 = byte_code[ip + 2]; ip += 3; break; // moveib
     case 0xd3: { // load
-      if (REG2 >= MEMORY_SIZE) dump_and_panic("segmentation fault");
+      if (REG2 >= MEMORY_SIZE) dump_and_panic("invalid load");
       REG1 = *(Word*)(mem + REG2); ip += 2; break;
     }
     case 0xd4: { // loadb
-      if (REG2 >= MEMORY_SIZE) dump_and_panic("segmentation fault");
+      if (REG2 >= MEMORY_SIZE) dump_and_panic("invalid loadb");
       REG1 = mem[REG2]; ip += 2; break;
     }
     case 0xd5: { // store
-      if (REG1 >= MEMORY_SIZE) dump_and_panic("segmentation fault");
+      if (REG1 >= MEMORY_SIZE) dump_and_panic("invalid store");
       *(Word*)(mem + REG1) = REG2; ip += 2; break;
     }
     case 0xd6: { // storeb
-      if (REG1 >= MEMORY_SIZE) dump_and_panic("segmentation fault");
+      if (REG1 >= MEMORY_SIZE) dump_and_panic("invalid storeb");
       mem[REG1] = REG2; ip += 2; break;
     }
     case 0xd7: SP -= 8; *(Word*)(mem + SP) = REG1; ip += 2; break; // push
@@ -204,15 +218,15 @@ void run_single(void) {
     case 0xf2: {
       if (TRACE_CALLS) {
         for (int i = 0; i < call_stack_len; i++)
-          printf(" ");
+          eprintf(" ");
         LabelAndPos lap = find_label(*(Word*)(byte_code + ip + 1));
-        for (int i = 0; i < lap.len; i++) printf("%c", lap.label[i]);
-        for (int i = call_stack_len + lap.len; i < 50; i++) printf(" ");
+        for (int i = 0; i < lap.len; i++) eprintf("%c", lap.label[i]);
+        for (int i = call_stack_len + lap.len; i < 50; i++) eprintf(" ");
         for (int i = SP; i < MEMORY_SIZE && i < SP + 40; i++) {
-          if (i % 8 == 0) printf(" |");
-          printf(" %02x", mem[i]);
+          if (i % 8 == 0) eprintf(" |");
+          eprintf(" %02x", mem[i]);
         }
-        printf("\n");
+        eprintf("\n");
       }
 
       Word return_target = ip + 9;
@@ -240,10 +254,10 @@ void run_single(void) {
     case 0xb1: REG1 |= REG2; ip += 2; break; // or
     case 0xb2: REG1 ^= REG2; ip += 2; break; // xor
     case 0xb3: REG1 = ~REG1; ip += 2; break; // not
-    default: dump_and_panic("invalid instruction"); return;
+    default: dump_and_panic("invalid instruction %dx", opcode); return;
   }
   if (TRACE_INSTRUCTIONS) {
-    printf("ran %x -> ", opcode);
+    eprintf("ran %x -> ", opcode);
     dump_reg();
   }
 }
@@ -251,66 +265,80 @@ void run_single(void) {
 void run(void) {
   for (int i = 0; 1; i++) {
     // dump_reg();
-    // printf("Memory:");
+    // eprintf("Memory:");
     // for (int i = 0x18650; i < MEMORY_SIZE; i++)
-    //   printf("%c%02x", i == SP ? '|' : ' ', mem[i]);
-    // printf("\n");
+    //   eprintf("%c%02x", i == SP ? '|' : ' ', mem[i]);
+    // eprintf("\n");
     run_single();
   }
 }
 
 void syscall_none(void) { dump_and_panic("invalid syscall number"); }
 void syscall_exit(void) {
-  if (TRACE_SYSCALLS) printf("syscall exit(%ld)\n", REGA);
-  printf("exited with %ld\n", REGA);
+  if (TRACE_SYSCALLS) eprintf("syscall exit(%ld)\n", REGA);
+  eprintf("exited with %ld\n", REGA);
   exit(REGA);
 }
 void syscall_print(void) {
-  if (TRACE_SYSCALLS) printf("syscall print(%lx, %ld)\n", REGA, REGB);
+  if (TRACE_SYSCALLS) eprintf("syscall print(%lx, %ld)\n", REGA, REGB);
   for (int i = 0; i < REGB; i++) printf("%c", mem[REGA + i]);
-  if (TRACE_CALLS || TRACE_SYSCALLS) printf("\n");
+  if (TRACE_CALLS || TRACE_SYSCALLS) eprintf("\n");
 }
 void syscall_log(void) {
-  if (TRACE_SYSCALLS) printf("syscall log(%lx, %ld)\n", REGA, REGB);
-  for (int i = 0; i < REGB; i++) fprintf(stderr, "%c", mem[REGA + i]);
-  if (TRACE_CALLS || TRACE_SYSCALLS) fprintf(stderr, "\n");
+  if (TRACE_SYSCALLS) eprintf("syscall log(%lx, %ld)\n", REGA, REGB);
+  for (int i = 0; i < REGB; i++) eprintf("%c", mem[REGA + i]);
+  if (TRACE_CALLS || TRACE_SYSCALLS) eprintf("\n");
 }
 void syscall_create(void) {
-  if (TRACE_SYSCALLS) printf("syscall create(%lx, %ld)\n", REGA, REGB);
+  if (TRACE_SYSCALLS) eprintf("syscall create(%lx, %ld)\n", REGA, REGB);
   char filename[REGB + 1];
   for (int i = 0; i < REGB; i++) filename[i] = mem[REGA + i];
   filename[REGB] = 0;
   REGA = (Word)fopen(filename, "w+");
 }
 void syscall_open_reading(void) {
-  if (TRACE_SYSCALLS) printf("syscall open_reading(%lx, %ld)\n", REGA, REGB);
+  if (TRACE_SYSCALLS) eprintf("syscall open_reading(%lx, %ld)\n", REGA, REGB);
   char filename[REGB + 1];
   for (int i = 0; i < REGB; i++) filename[i] = mem[REGA + i];
   filename[REGB] = 0;
-  printf("opening filename %s\n", filename);
   REGA = (Word)fopen(filename, "r");
 }
 void syscall_open_writing(void) {
-  if (TRACE_SYSCALLS) printf("syscall open_writing(%lx, %ld)\n", REGA, REGB);
+  if (TRACE_SYSCALLS) eprintf("syscall open_writing(%lx, %ld)\n", REGA, REGB);
   char filename[REGB + 1];
   for (int i = 0; i < REGB; i++) filename[i] = mem[REGA + i];
   filename[REGB] = 0;
   REGA = (Word)fopen(filename, "w+");
 }
 void syscall_read(void) {
-  if (TRACE_SYSCALLS) printf("syscall read(%ld, %lx, %ld)\n", REGA, REGB, REGC);
-  REGA = fread(mem + REGB, 1, REGC, (FILE*)(mem + REGA));
+  if (TRACE_SYSCALLS) eprintf("syscall read(%ld, %lx, %ld)\n", REGA, REGB, REGC);
+  REGA = fread(mem + REGB, 1, REGC, (FILE*)REGA);
 }
 void syscall_write(void) {
   if (TRACE_SYSCALLS)
-    printf("syscall write(%ld, %lx, %ld)\n", REGA, REGB, REGC);
+    eprintf("syscall write(%ld, %lx, %ld)\n", REGA, REGB, REGC);
   // TODO: assert that this worked
-  fwrite(mem + REGB, 1, REGC, (FILE*)(mem + REGA));
+  fwrite(mem + REGB, 1, REGC, (FILE*)REGA);
 }
 void syscall_close(void) {
-  if (TRACE_SYSCALLS) printf("syscall close(%ld)\n", REGA);
+  if (TRACE_SYSCALLS) eprintf("syscall close(%ld)\n", REGA);
   // TODO: assert that this worked
-  fclose((FILE*)(mem + REGA));
+  fclose((FILE*)REGA);
+}
+int global_argc;
+void syscall_argc(void) {
+  if (TRACE_SYSCALLS) eprintf("syscall argc()\n");
+  REGA = global_argc;
+}
+char** global_argv;
+void syscall_arg(void) {
+  if (TRACE_SYSCALLS) eprintf("syscall arg(%ld, %lx, %ld)\n", REGA, REGB, REGC);
+  if (REGA < 0 || REGA >= global_argc) dump_and_panic("arg index out of bounds");
+  char* arg = global_argv[REGA];
+  int len = strlen(arg);
+  int written = len > REGC ? REGC : len;
+  for (int i = 0; i < written; i++) mem[REGB + i] = arg[i];
+  REGA = written;
 }
 
 void init_syscalls(void) {
@@ -324,9 +352,14 @@ void init_syscalls(void) {
   syscall_handlers[6] = syscall_read;
   syscall_handlers[7] = syscall_write;
   syscall_handlers[8] = syscall_close;
+  syscall_handlers[9] = syscall_argc;
+  syscall_handlers[10] = syscall_arg;
 }
 
 int main(int argc, char** argv) {
+  global_argc = argc;
+  global_argv = argv;
+  
   size_t cap = 8;
   size_t len = 0;
   Byte *bin = (Byte*) malloc(8);
