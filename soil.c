@@ -99,25 +99,10 @@ void dump_and_panic(char* fmt, ...) {
 
 void init_syscalls(void);
 
-void init_vm(Byte* bin, int bin_len, int argc, char** argv) {
+void init_vm(Byte* bin, int bin_len) {
   for (int i = 0; i < 8; i++) reg[i] = 0;
   SP = MEMORY_SIZE;
   mem = malloc(MEMORY_SIZE);
-
-  // Push main function arguments to the stack.
-  SP -= 16 * argc;
-  int slice = SP;
-  for (int i = 0; i < argc; i++) {
-    int len = strlen(argv[i]);
-    SP -= len;
-    for (int j = 0; j < len; j++) mem[SP + j] = argv[i][j];
-    *(Word*)(mem + slice + 16 * i) = SP;
-    *(Word*)(mem + slice + 16 * i + 8) = len;
-  }
-  SP = SP / 8 * 8;
-  SP -= 16;
-  *(Word*)(mem + SP) = slice;
-  *(Word*)(mem + SP + 8) = argc;
 
   init_syscalls();
 
@@ -359,7 +344,7 @@ void init_syscalls(void) {
 int main(int argc, char** argv) {
   global_argc = argc;
   global_argv = argv;
-  
+
   size_t cap = 8;
   size_t len = 0;
   Byte *bin = (Byte*) malloc(8);
@@ -374,6 +359,6 @@ int main(int argc, char** argv) {
     len++;
   }
 
-  init_vm(bin, len, argc, argv);
+  init_vm(bin, len);
   run();
 }
