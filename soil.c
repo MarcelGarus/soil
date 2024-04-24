@@ -83,57 +83,7 @@ void dump_and_panic(char* msg) {
   exit(1);
 }
 
-void syscall_none() { dump_and_panic("invalid syscall number"); }
-void syscall_exit() {
-  if (TRACE_SYSCALLS) printf("syscall exit(%ld)\n", REGA);
-  printf("exited with %ld\n", REGA); exit(REGA);
-}
-void syscall_print() {
-  if (TRACE_SYSCALLS) printf("syscall print(%lx, %ld)\n", REGA, REGB);
-  for (int i = 0; i < REGB; i++) printf("%c", mem[REGA + i]);
-  if (TRACE_CALLS || TRACE_SYSCALLS) printf("\n");
-}
-void syscall_log() {
-  if (TRACE_SYSCALLS) printf("syscall log(%lx, %ld)\n", REGA, REGB);
-  for (int i = 0; i < REGB; i++) fprintf(stderr, "%c", mem[REGA + i]);
-  if (TRACE_CALLS || TRACE_SYSCALLS) fprintf(stderr, "\n");
-}
-void syscall_create() {
-  if (TRACE_SYSCALLS) printf("syscall create(%lx, %ld)\n", REGA, REGB);
-  char filename[REGB + 1];
-  for (int i = 0; i < REGB; i++) filename[i] = mem[REGA + i];
-  filename[REGB] = 0;
-  REGA = (Word)fopen(filename, "w+");
-}
-void syscall_open_reading() {
-  if (TRACE_SYSCALLS) printf("syscall open_reading(%lx, %ld)\n", REGA, REGB);
-  char filename[REGB + 1];
-  for (int i = 0; i < REGB; i++) filename[i] = mem[REGA + i];
-  filename[REGB] = 0;
-  printf("opening filename %s\n", filename);
-  REGA = (Word)fopen(filename, "r");
-}
-void syscall_open_writing() {
-  if (TRACE_SYSCALLS) printf("syscall open_writing(%lx, %ld)\n", REGA, REGB);
-  char filename[REGB + 1];
-  for (int i = 0; i < REGB; i++) filename[i] = mem[REGA + i];
-  filename[REGB] = 0;
-  REGA = (Word)fopen(filename, "w+");
-}
-void syscall_read() {
-  if (TRACE_SYSCALLS) printf("syscall read(%ld, %lx, %ld)\n", REGA, REGB, REGC);
-  REGA = fread(mem + REGB, 1, REGC, (FILE*)(mem + REGA));
-}
-void syscall_write() {
-  if (TRACE_SYSCALLS) printf("syscall write(%ld, %lx, %ld)\n", REGA, REGB, REGC);
-  // TODO: assert that this worked
-  fwrite(mem + REGB, 1, REGC, (FILE*)(mem + REGA));
-}
-void syscall_close() {
-  if (TRACE_SYSCALLS) printf("syscall close(%ld)\n", REGA);
-  // TODO: assert that this worked
-  fclose((FILE*)(mem + REGA));
-}
+void init_syscalls(void);
 
 void init_vm(Byte* bin, int bin_len, int argc, char** argv) {
   for (int i = 0; i < 8; i++) reg[i] = 0;
@@ -155,16 +105,7 @@ void init_vm(Byte* bin, int bin_len, int argc, char** argv) {
   *(Word*)(mem + SP) = slice;
   *(Word*)(mem + SP + 8) = argc;
 
-  for (int i = 0; i < 256; i++) syscall_handlers[i] = syscall_none;
-  syscall_handlers[0] = syscall_exit;
-  syscall_handlers[1] = syscall_print;
-  syscall_handlers[2] = syscall_log;
-  syscall_handlers[3] = syscall_create;
-  syscall_handlers[4] = syscall_open_reading;
-  syscall_handlers[5] = syscall_open_writing;
-  syscall_handlers[6] = syscall_read;
-  syscall_handlers[7] = syscall_write;
-  syscall_handlers[8] = syscall_close;
+  init_syscalls();
 
   int cursor = 0;
   #define EAT_BYTE ({ \
@@ -219,7 +160,7 @@ void init_vm(Byte* bin, int bin_len, int argc, char** argv) {
   // printf("\n");
 }
 
-void dump_reg() {
+void dump_reg(void) {
   printf(
     "ip = %lx, sp = %lx, st = %lx, a = %lx, b = %lx, c = %lx, d = %lx, e = "
     "%lx, f = %lx\n", ip, SP, ST, REGA, REGB, REGC, REGD, REGE, REGF);
@@ -227,7 +168,7 @@ void dump_reg() {
 
 typedef Byte Reg; // 4 bits would actually be enough, but meh
 
-void run_single() {
+void run_single(void) {
   #define REG1 reg[byte_code[ip + 1] & 0x0f]
   #define REG2 reg[byte_code[ip + 1] >> 4]
 
@@ -307,7 +248,7 @@ void run_single() {
   }
 }
 
-void run() {
+void run(void) {
   for (int i = 0; 1; i++) {
     // dump_reg();
     // printf("Memory:");
@@ -316,6 +257,73 @@ void run() {
     // printf("\n");
     run_single();
   }
+}
+
+void syscall_none(void) { dump_and_panic("invalid syscall number"); }
+void syscall_exit(void) {
+  if (TRACE_SYSCALLS) printf("syscall exit(%ld)\n", REGA);
+  printf("exited with %ld\n", REGA);
+  exit(REGA);
+}
+void syscall_print(void) {
+  if (TRACE_SYSCALLS) printf("syscall print(%lx, %ld)\n", REGA, REGB);
+  for (int i = 0; i < REGB; i++) printf("%c", mem[REGA + i]);
+  if (TRACE_CALLS || TRACE_SYSCALLS) printf("\n");
+}
+void syscall_log(void) {
+  if (TRACE_SYSCALLS) printf("syscall log(%lx, %ld)\n", REGA, REGB);
+  for (int i = 0; i < REGB; i++) fprintf(stderr, "%c", mem[REGA + i]);
+  if (TRACE_CALLS || TRACE_SYSCALLS) fprintf(stderr, "\n");
+}
+void syscall_create(void) {
+  if (TRACE_SYSCALLS) printf("syscall create(%lx, %ld)\n", REGA, REGB);
+  char filename[REGB + 1];
+  for (int i = 0; i < REGB; i++) filename[i] = mem[REGA + i];
+  filename[REGB] = 0;
+  REGA = (Word)fopen(filename, "w+");
+}
+void syscall_open_reading(void) {
+  if (TRACE_SYSCALLS) printf("syscall open_reading(%lx, %ld)\n", REGA, REGB);
+  char filename[REGB + 1];
+  for (int i = 0; i < REGB; i++) filename[i] = mem[REGA + i];
+  filename[REGB] = 0;
+  printf("opening filename %s\n", filename);
+  REGA = (Word)fopen(filename, "r");
+}
+void syscall_open_writing(void) {
+  if (TRACE_SYSCALLS) printf("syscall open_writing(%lx, %ld)\n", REGA, REGB);
+  char filename[REGB + 1];
+  for (int i = 0; i < REGB; i++) filename[i] = mem[REGA + i];
+  filename[REGB] = 0;
+  REGA = (Word)fopen(filename, "w+");
+}
+void syscall_read(void) {
+  if (TRACE_SYSCALLS) printf("syscall read(%ld, %lx, %ld)\n", REGA, REGB, REGC);
+  REGA = fread(mem + REGB, 1, REGC, (FILE*)(mem + REGA));
+}
+void syscall_write(void) {
+  if (TRACE_SYSCALLS)
+    printf("syscall write(%ld, %lx, %ld)\n", REGA, REGB, REGC);
+  // TODO: assert that this worked
+  fwrite(mem + REGB, 1, REGC, (FILE*)(mem + REGA));
+}
+void syscall_close(void) {
+  if (TRACE_SYSCALLS) printf("syscall close(%ld)\n", REGA);
+  // TODO: assert that this worked
+  fclose((FILE*)(mem + REGA));
+}
+
+void init_syscalls(void) {
+  for (int i = 0; i < 256; i++) syscall_handlers[i] = syscall_none;
+  syscall_handlers[0] = syscall_exit;
+  syscall_handlers[1] = syscall_print;
+  syscall_handlers[2] = syscall_log;
+  syscall_handlers[3] = syscall_create;
+  syscall_handlers[4] = syscall_open_reading;
+  syscall_handlers[5] = syscall_open_writing;
+  syscall_handlers[6] = syscall_read;
+  syscall_handlers[7] = syscall_write;
+  syscall_handlers[8] = syscall_close;
 }
 
 int main(int argc, char** argv) {
