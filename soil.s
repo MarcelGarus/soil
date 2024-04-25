@@ -95,7 +95,7 @@ macro eprint msg, len { ; msg can't be rdi or rsi. len can't be rdi, rsi, rdx
 ; < rax: pointer to message
 ; < rbx: length of message
 panic:
-  call print
+  call eprint
   exit 1
 macro panic msg, len {
   mov rax, msg
@@ -726,6 +726,10 @@ compile_binary:
     emit_bytes 0fh, 85h
     emit_relative_patch target
   }
+  macro emit_mov_al_byte a { ; move al, <a>
+    emit_bytes 0b0h
+    emit_byte a
+  }
   macro emit_mov_rax_soil a { ; mov rax, <a>
     emit_bytes 4ch, 89h
     shl a, 3
@@ -859,8 +863,9 @@ compile_binary:
           jmp .instruction_parsed
 .syscall: mov r14, 0
           eat_byte r14b
+          emit_mov_al_byte r14b         ; mov al, <syscall-number>
           mov r14, [syscalls.table + 8 * r14]
-          emit_call_comptime r14     ; call <syscall>
+          emit_call_comptime r14        ; call <syscall>
           jmp .instruction_parsed
 .cmp:     eat_regs_into_dil_sil
           mov bl, 1 ; st = r9
@@ -1057,6 +1062,7 @@ syscalls:
   dq 248 dup .unknown
 
 .unknown:
+  replace_two_bytes_with_hex_byte (str_unknown_syscall + str_unknown_syscall.hex_offset), al
   panic str_unknown_syscall, str_unknown_syscall.len
 
 .exit:
@@ -1178,8 +1184,9 @@ str_todo: db "Todo", 0xa
 str_unknown_opcode: db "unknown opcode xx", 0xa
   .len = ($ - str_unknown_opcode)
   .hex_offset = (.len - 3)
-str_unknown_syscall: db "unknown syscall", 0xa
+str_unknown_syscall: db "unknown syscall xx", 0xa
   .len = ($ - str_unknown_syscall)
+  .hex_offset = (.len - 3)
 str_vm_panicked: db 0xa, "Oh no! The program panicked.", 0xa, 0xa
   .len = ($ - str_vm_panicked)
 
