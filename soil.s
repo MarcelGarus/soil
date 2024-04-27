@@ -1066,6 +1066,10 @@ run:
   exit 0
 
 main:
+  mov rax, [rsp]
+  mov [saved_argc], rax
+  lea rax, [rsp + 8]
+  mov [saved_argv], rax
   call init_heap
   call load_binary
   call compile_binary
@@ -1078,16 +1082,18 @@ main:
 
 syscalls:
 .table:
-  dq .exit         ; 0
-  dq .print        ; 1
-  dq .log          ; 2
-  dq .create       ; 3
-  dq .open_reading ; 4
-  dq .open_writing ; 5
-  dq .read         ; 6
-  dq .write        ; 7
-  dq .close        ; 8
-  dq 248 dup .unknown
+  dq .exit         ;  0
+  dq .print        ;  1
+  dq .log          ;  2
+  dq .create       ;  3
+  dq .open_reading ;  4
+  dq .open_writing ;  5
+  dq .read         ;  6
+  dq .write        ;  7
+  dq .close        ;  8
+  dq .argc         ;  9
+  dq .arg          ; 10
+  dq 246 dup .unknown
 
 .unknown:
   replace_two_bytes_with_hex_byte (str_unknown_syscall + str_unknown_syscall.hex_offset), al
@@ -1163,6 +1169,43 @@ syscalls:
   pop_syscall_clobbers
   ret
 
+.argc:
+  mov r10, [saved_argc]
+  ret
+
+.arg:
+  ; jmp .arg
+  ; TODO: check that the index is valid
+  ; mov rax, [saved_argc]
+  ; cmp r10, rax
+  ; jge .invalid_stuff
+  ; base pointer of the string given to us by the OS
+  mov rax, r10
+  imul rax, 8
+  add rax, [saved_argv]
+  mov rax, [rax]
+  ; index
+  mov rcx, 0
+  ; TODO: check that the buffer is completely in the VM memory
+.copy_arg_loop:
+  cmp rcx, r12 ; we filled the entire buffer
+  je .done_copying_arg
+  mov rsi, rax
+  add rsi, rcx
+  mov dl, [rsi]
+  cmp dl, 0 ; we reached the end of the string (terminating null-byte)
+  je .done_copying_arg
+  mov rdi, r11
+  add rdi, rbp
+  add rdi, rcx
+  mov [rdi], dl
+  inc rcx
+  jmp .copy_arg_loop
+.done_copying_arg:
+  ; jmp .done_copying_arg
+  mov r10, rcx
+  ret
+
 ; void syscall_create() {
 ;   char filename[REGB];
 ;   for (int i = 0; i < REGB; i++) filename[i] = mem[REGA + i];
@@ -1189,6 +1232,9 @@ syscalls:
 ; }
 
 segment readable writable
+
+saved_argc: dq 0
+saved_argv: dq 0
 
 my_heap:
   .head: dq 0
