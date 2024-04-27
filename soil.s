@@ -540,53 +540,57 @@ compile_binary:
   jmp .parse_section
 
 .jump_table:
-  ; This macro generates (to - from + 1) pointers to .invalid. Both bounds are
-  ; inclusive.
+  ; This macro generates (to - from + 1) pointers to compile_invalid. Both
+  ; bounds are inclusive.
   macro invalid_opcodes from, to {
     opcode = from
     while opcode <= to
-      dq .invalid
+      dq compile_invalid
       opcode = opcode + 1
     end while
   }
-  dq .nop ; 00
+  dq compile_nop ; 00
   invalid_opcodes 01h, 9fh
-  dq .add ; a0
-  dq .sub ; a1
-  dq .mul ; a2
-  dq .div ; a3
-  dq .rem ; a4
+  dq compile_add ; a0
+  dq compile_sub ; a1
+  dq compile_mul ; a2
+  dq compile_div ; a3
+  dq compile_rem ; a4
   invalid_opcodes 0a5h, 0afh
-  dq .and ; b0
-  dq .or ; b1
-  dq .xor ; b2
-  dq .not ; b3
+  dq compile_and ; b0
+  dq compile_or ; b1
+  dq compile_xor ; b2
+  dq compile_not ; b3
   invalid_opcodes 0b4h, 0bfh
-  dq .cmp ; c0
-  dq .isequal ; c1
-  dq .isless ; c2
-  dq .isgreater ; c3
-  dq .islessequal ; c4
-  dq .isgreaterequal ; c5
+  dq compile_cmp ; c0
+  dq compile_isequal ; c1
+  dq compile_isless ; c2
+  dq compile_isgreater ; c3
+  dq compile_islessequal ; c4
+  dq compile_isgreaterequal ; c5
   invalid_opcodes 0c6h, 0cfh
-  dq .move ; d0
-  dq .movei ; d1
-  dq .moveib ; d2
-  dq .load ; d3
-  dq .loadb ; d4
-  dq .store ; d5
-  dq .storeb ; d6
-  dq .push ; d7
-  dq .pop ; d8
+  dq compile_move ; d0
+  dq compile_movei ; d1
+  dq compile_moveib ; d2
+  dq compile_load ; d3
+  dq compile_loadb ; d4
+  dq compile_store ; d5
+  dq compile_storeb ; d6
+  dq compile_push ; d7
+  dq compile_pop ; d8
   invalid_opcodes 0d9h, 0dfh
-  dq .panic ; e0
+  dq compile_panic ; e0
   invalid_opcodes 0e1h, 0efh
-  dq .jump ; f0
-  dq .cjump ; f1
-  dq .call ; f2
-  dq .ret ; f3
-  dq .syscall ; f4
+  dq compile_jump ; f0
+  dq compile_cjump ; f1
+  dq compile_call ; f2
+  dq compile_ret ; f3
+  dq compile_syscall ; f4
   invalid_opcodes 0f5h, 0ffh
+
+macro instruction_end {
+  jmp compile_binary.instruction_parsed
+}
 
   ; for instructions with one register argument
   macro eat_reg_into_dil {
@@ -624,9 +628,7 @@ compile_binary:
   }
   macro emit_value_plus_8_times_a value, a {
     shl a, 3
-    add a, value
-    emit_byte a
-    sub a, value
+    emit_value_plus_a value, a
     shr a, 3
   }
   macro emit_a_plus_8_times_b a, b { ; (<a> + 8 * <b>)
@@ -676,14 +678,14 @@ compile_binary:
     emit_c0_plus_a_plus_8_times_b a, b
   }
   macro emit_add_r8_8 { emit_bytes 49h, 83h, 0c0h, 08h } ; add r8, 8
-  macro emit_add_rax_rbp { emit_bytes 48h, 01h, 0e8h } ; mov rax, rbp
+  macro emit_add_rax_rbp { emit_bytes 48h, 89h, 0e8h } ; mov rax, rbp
   macro emit_and_soil_0xff a {
     emit_bytes 49h, 81h
     emit_value_plus_a 0e0h, a
     emit_bytes 0ffh, 00h, 00h, 00h
   }
   macro emit_and_r9_0xff { emit_bytes 49h, 81h, 0e1h, 0ffh, 00h, 00h, 00h } ; and r9, 0xff
-  macro emit_and_rax_ff { emit_bytes 48h, 25h, 0ffh, 00h, 00h, 00h } ; and rax, 0ffh
+  macro emit_and_rax_0xff { emit_bytes 48h, 25h, 0ffh, 00h, 00h, 00h } ; and rax, 0ffh
   macro emit_and_soil_soil a, b { ; and <a>, <b>
     emit_bytes 4dh, 21h
     emit_c0_plus_a_plus_8_times_b a, b
@@ -732,19 +734,31 @@ compile_binary:
   }
   macro emit_mov_rax_soil a { ; mov rax, <a>
     emit_bytes 4ch, 89h
-    shl a, 3
-    emit_value_plus_a 0c0h, a
-    shr a, 3
+    emit_value_plus_8_times_a 0c0h, a
   }
   macro emit_mov_mem_of_rbp_plus_soil_soil a, b { ; mov [rbp + <a>], <b>
     emit_bytes 4dh, 89h
+    cmp a, 5 ; for <a> = r13, the encoding is different
+    jz .foo
     emit_value_plus_8_times_a 04h, b
     emit_value_plus_a 28h, a
+    jmp .bar
+    .foo:
+    emit_value_plus_8_times_a 44h, b
+    emit_bytes 2dh, 00h
+    .bar:
   }
   macro emit_mov_mem_of_rbp_plus_soil_soilb a, b { ; mov [rbp + <a>], <b>b
     emit_bytes 45h, 88h
+    cmp a, 5 ; for <a> = r13, the encoding is different
+    jz .foo
     emit_value_plus_8_times_a 04h, b
     emit_value_plus_a 28h, a
+    jmp .bar
+    .foo:
+    emit_value_plus_8_times_a 44h, b
+    emit_bytes 2dh, 00h
+    .bar:
   }
   macro emit_mov_soil_rdx a { ; mov <a>, rdx
     emit_bytes 49h, 89h
@@ -756,13 +770,27 @@ compile_binary:
   }
   macro emit_mov_soil_mem_of_rdp_plus_soil a, b { ; mov <a>, [rbp + <b>]
     emit_bytes 4dh, 8bh
+    cmp b, 5 ; for <b> = r13, the encoding is different
+    jz .foo
     emit_value_plus_8_times_a 04h, a
     emit_value_plus_a 28h, b
+    jmp .bar
+    .foo:
+    emit_value_plus_8_times_a 44h, a
+    emit_bytes 2dh, 00h
+    .bar:
   }
   macro emit_mov_soilb_mem_of_rbp_plus_soil a, b { ; mov <a>b, [rbp + <b>]
     emit_bytes 45h, 8ah
+    cmp b, 5 ; for <b> = r13, the encoding is different
+    jz .foo
     emit_value_plus_8_times_a 04h, a
     emit_value_plus_a 28h, b
+    jmp .bar
+    .foo:
+    emit_value_plus_8_times_a 44h, a
+    emit_bytes 2dh, 00h
+    .bar:
   }
   macro emit_mov_soil_soil a, b { ; mov <a>, <b>
     emit_bytes 4dh, 89h
@@ -807,123 +835,123 @@ compile_binary:
     emit_c0_plus_a_plus_8_times_b a, b
   }
 
-.invalid: replace_two_bytes_with_hex_byte (str_unknown_opcode + str_unknown_opcode.hex_offset), r12b
-          panic str_unknown_opcode, str_unknown_opcode.len
-.nop:     emit_nop                      ; nop
-          jmp .instruction_parsed
-.panic:   emit_call_comptime panic_with_info ; call panic_with_info
-          jmp .instruction_parsed
-.move:    eat_regs_into_dil_sil
-          emit_mov_soil_soil dil, sil   ; mov <to>, <from>
-          jmp .instruction_parsed
-.movei:   eat_reg_into_dil
-          eat_word r12
-          emit_mov_soil_word dil, r12   ; mov <to>, <word>
-          jmp .instruction_parsed
-.moveib:  eat_reg_into_dil
-          eat_byte r12b
-          mov sil, dil
-          emit_xor_soil_soil dil, sil   ; xor <to>, <to>
-          emit_mov_soil_byte dil, r12b  ; mov <to>b, <byte>
-          jmp .instruction_parsed
-.load:    eat_regs_into_dil_sil
-          emit_mov_soil_mem_of_rdp_plus_soil dil, sil ; mov <to>, [rbp + <from>]
-          jmp .instruction_parsed
-.loadb:   eat_regs_into_dil_sil
-          emit_mov_soilb_mem_of_rbp_plus_soil dil, sil ; mov <to>b, [rbp + <from>]
-          emit_and_soil_0xff dil        ; and <to>, 0ffh
-          jmp .instruction_parsed
-.store:   eat_regs_into_dil_sil
-          emit_mov_mem_of_rbp_plus_soil_soil dil, sil ; mov [rbp + <to>], <from>
-          jmp .instruction_parsed
-.storeb:  eat_regs_into_dil_sil
-          emit_mov_mem_of_rbp_plus_soil_soilb dil, sil ; mov [rbp + <to>], <from>b
-          jmp .instruction_parsed
-.push:    eat_reg_into_dil
-          emit_sub_r8_8                 ; sub r8, 8
-          mov sil, 0 ; sp
-          emit_mov_mem_of_rbp_plus_soil_soil sil, dil ; mov [rbp + r8], <from>
-          jmp .instruction_parsed
-.pop:     eat_reg_into_dil
-          mov sil, 0 ; sp
-          emit_mov_soil_mem_of_rdp_plus_soil dil, sil ; mov <a>, [rbp + r8]
-          emit_add_r8_8                 ; add r8, 8
-          jmp .instruction_parsed
-.jump:    eat_word r14
-          emit_jmp r14                  ; jmp <target>
-          jmp .instruction_parsed
-.cjump:   eat_word r14
-          emit_test_r9_r9               ; test r9, r9
-          emit_jnz r14                  ; jmp <target>
-          jmp .instruction_parsed
-.call:    eat_word r14
-          emit_call r14                 ; call <target>
-          jmp .instruction_parsed
-.ret:     emit_ret                      ; ret
-          jmp .instruction_parsed
-.syscall: mov r14, 0
-          eat_byte r14b
-          emit_mov_al_byte r14b         ; mov al, <syscall-number>
-          mov r14, [syscalls.table + 8 * r14]
-          emit_call_comptime r14        ; call <syscall>
-          jmp .instruction_parsed
-.cmp:     eat_regs_into_dil_sil
-          mov bl, 1 ; st = r9
-          emit_mov_soil_soil bl, dil    ; mov r9, <left>
-          emit_sub_soil_soil bl, sil    ; sub r9, <right>
-          jmp .instruction_parsed
-.isequal: emit_test_r9_r9               ; test r9, r9
-          emit_sete_r9b                 ; sete r9b
-          emit_and_r9_0xff              ; and r9, 0fh
-          jmp .instruction_parsed
-.isless:  emit_shr_r9_63                ; shr r9, 63
-          jmp .instruction_parsed
-.isgreater: emit_test_r9_r9             ; test r9, r9
-          emit_setg_r9b                 ; setg r9b
-          emit_and_r9_0xff              ; and r9, 0fh
-          jmp .instruction_parsed
-.islessequal: emit_test_r9_r9           ; test r9, r9
-          emit_setle_r9b                ; setle r9b
-          emit_and_r9_0xff              ; and r9, 0fh
-          jmp .instruction_parsed
-.isgreaterequal: emit_not_r9            ; not r9
-          emit_shr_r9_63                ; shr r9, 63
-          jmp .instruction_parsed
-.add:     eat_regs_into_dil_sil
-          emit_add_soil_soil dil, sil   ; add <to>, <from>
-          jmp .instruction_parsed
-.sub:     eat_regs_into_dil_sil
-          emit_sub_soil_soil dil, sil   ; sub <to>, <from>
-          jmp .instruction_parsed
-.mul:     eat_regs_into_dil_sil
-          emit_imul_soil_soil dil, sil  ; imul <to>, <from>
-          jmp .instruction_parsed
-.div:     eat_regs_into_dil_sil
-          ; idiv implicitly divides rdx:rax by the operand. rax -> quotient
-          emit_xor_rdx_rdx              ; xor rdx, rdx
-          emit_mov_rax_soil dil         ; mov rax, <to>
-          emit_idiv_soil sil            ; idiv <from>
-          emit_mov_soil_rax dil         ; mov <to>, rax
-          jmp .instruction_parsed
-.rem:     eat_regs_into_dil_sil
-          ; idiv implicitly divides rdx:rax by the operand. rdx -> remainder
-          emit_xor_rdx_rdx              ; xor rdx, rdx
-          emit_mov_rax_soil dil         ; mov rax, <to>
-          emit_idiv_soil sil            ; idiv <from>
-          emit_mov_soil_rdx dil         ; mov <to>, rdx
-          jmp .instruction_parsed
-.and:     eat_regs_into_dil_sil
-          emit_and_soil_soil dil, sil   ; and <to>, <from>
-          jmp .instruction_parsed
-.or:      eat_regs_into_dil_sil
-          emit_or_soil_soil dil, sil    ; or <to>, <from>
-          jmp .instruction_parsed
-.xor:     eat_regs_into_dil_sil
-          emit_xor_soil_soil dil, sil   ; xor <to>, <from>
-          jmp .instruction_parsed
-.not:     eat_reg_into_dil
-          emit_not_soil dil             ; not <to>
-          jmp .instruction_parsed
+compile_invalid: replace_two_bytes_with_hex_byte (str_unknown_opcode + str_unknown_opcode.hex_offset), r12b
+                panic str_unknown_opcode, str_unknown_opcode.len
+compile_nop:    nop                           ; nop
+                instruction_end
+compile_panic:  emit_call_comptime panic_with_info ; call panic_with_info
+                instruction_end
+compile_move:   eat_regs_into_dil_sil
+                emit_mov_soil_soil dil, sil   ; mov <to>, <from>
+                instruction_end
+compile_movei:  eat_reg_into_dil
+                eat_word r12
+                emit_mov_soil_word dil, r12   ; mov <to>, <word>
+                instruction_end
+compile_moveib: eat_reg_into_dil
+                eat_byte r12b
+                mov sil, dil
+                emit_xor_soil_soil dil, sil   ; xor <to>, <to>
+                emit_mov_soil_byte dil, r12b  ; mov <to>b, <byte>
+                instruction_end
+compile_load:   eat_regs_into_dil_sil
+                emit_mov_soil_mem_of_rdp_plus_soil dil, sil ; mov <to>, [rbp + <from>]
+                instruction_end
+compile_loadb:  eat_regs_into_dil_sil
+                emit_mov_soilb_mem_of_rbp_plus_soil dil, sil ; mov <to>b, [rbp + <from>]
+                emit_and_soil_0xff dil        ; and <to>, 0ffh
+                instruction_end
+compile_store:  eat_regs_into_dil_sil
+                emit_mov_mem_of_rbp_plus_soil_soil dil, sil ; mov [rbp + <to>], <from>
+                instruction_end
+compile_storeb: eat_regs_into_dil_sil
+                emit_mov_mem_of_rbp_plus_soil_soilb dil, sil ; mov [rbp + <to>], <from>b
+                instruction_end
+compile_push:   eat_reg_into_dil
+                emit_sub_r8_8                 ; sub r8, 8
+                mov sil, 0 ; sp
+                emit_mov_mem_of_rbp_plus_soil_soil sil, dil ; mov [rbp + r8], <from>
+                instruction_end
+compile_pop:    eat_reg_into_dil
+                mov sil, 0 ; sp
+                emit_mov_soil_mem_of_rdp_plus_soil dil, sil ; mov <a>, [rbp + r8]
+                emit_add_r8_8                 ; add r8, 8
+                instruction_end
+compile_jump:   eat_word r14
+                emit_jmp r14                  ; jmp <target>
+                instruction_end
+compile_cjump:  eat_word r14
+                emit_test_r9_r9               ; test r9, r9
+                emit_jnz r14                  ; jmp <target>
+                instruction_end
+compile_call:   eat_word r14
+                emit_call r14                 ; call <target>
+                instruction_end
+compile_ret:    emit_ret                      ; ret
+                instruction_end
+compile_syscall: mov r14, 0
+                eat_byte r14b
+                emit_mov_al_byte r14b         ; mov al, <syscall-number>
+                mov r14, [syscalls.table + 8 * r14]
+                emit_call_comptime r14        ; call <syscall>
+                instruction_end
+compile_cmp:    eat_regs_into_dil_sil
+                mov bl, 1 ; st = r9
+                emit_mov_soil_soil bl, dil    ; mov r9, <left>
+                emit_sub_soil_soil bl, sil    ; sub r9, <right>
+                instruction_end
+compile_isequal: emit_test_r9_r9               ; test r9, r9
+                emit_sete_r9b                 ; sete r9b
+                emit_and_r9_0xff              ; and r9, 0fh
+                instruction_end
+compile_isless: emit_shr_r9_63                ; shr r9, 63
+                instruction_end
+compile_isgreater: emit_test_r9_r9             ; test r9, r9
+                emit_setg_r9b                 ; setg r9b
+                emit_and_r9_0xff              ; and r9, 0fh
+                instruction_end
+compile_islessequal: emit_test_r9_r9           ; test r9, r9
+                emit_setle_r9b                ; setle r9b
+                emit_and_r9_0xff              ; and r9, 0fh
+                instruction_end
+compile_isgreaterequal: emit_not_r9            ; not r9
+                emit_shr_r9_63                ; shr r9, 63
+                instruction_end
+compile_add:    eat_regs_into_dil_sil
+                emit_add_soil_soil dil, sil   ; add <to>, <from>
+                instruction_end
+compile_sub:    eat_regs_into_dil_sil
+                emit_sub_soil_soil dil, sil   ; sub <to>, <from>
+                instruction_end
+compile_mul:    eat_regs_into_dil_sil
+                emit_imul_soil_soil dil, sil  ; imul <to>, <from>
+                instruction_end
+compile_div:    eat_regs_into_dil_sil
+                ; idiv implicitly divides rdx:rax by the operand. rax -> quotient
+                emit_xor_rdx_rdx              ; xor rdx, rdx
+                emit_mov_rax_soil dil         ; mov rax, <to>
+                emit_idiv_soil sil            ; idiv <from>
+                emit_mov_soil_rax dil         ; mov <to>, rax
+                instruction_end
+compile_rem:    eat_regs_into_dil_sil
+                ; idiv implicitly divides rdx:rax by the operand. rdx -> remainder
+                emit_xor_rdx_rdx              ; xor rdx, rdx
+                emit_mov_rax_soil dil         ; mov rax, <to>
+                emit_idiv_soil sil            ; idiv <from>
+                emit_mov_soil_rdx dil         ; mov <to>, rdx
+                instruction_end
+compile_and:    eat_regs_into_dil_sil
+                emit_and_soil_soil dil, sil   ; and <to>, <from>
+                instruction_end
+compile_or:     eat_regs_into_dil_sil
+                emit_or_soil_soil dil, sil    ; or <to>, <from>
+                instruction_end
+compile_xor:    eat_regs_into_dil_sil
+                emit_xor_soil_soil dil, sil   ; xor <to>, <from>
+                instruction_end
+compile_not:    eat_reg_into_dil
+                emit_not_soil dil             ; not <to>
+                instruction_end
 
 
 ; Panic with stack trace
