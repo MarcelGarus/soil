@@ -1087,7 +1087,7 @@ syscalls:
   dq .log          ;  2
   dq .create       ;  3
   dq .open_reading ;  4
-  dq .open_writing ;  5
+  dq .unknown      ;  5
   dq .read         ;  6
   dq .write        ;  7
   dq .close        ;  8
@@ -1125,38 +1125,60 @@ syscalls:
   ret
 
 .create:
-  push_syscall_clobbers
+  ; make the filename null-terminated, saving the previous end byte in bl
   mov rcx, rbp
   add rcx, r10
   add rcx, r11
   mov bl, [rcx]
   mov [rcx], byte 0
-  mov rax, 1 ; open syscall
-  lea rdi, [r10 + rbp]
-  mov rsi, 01102o ; RDWR|CREAT|TRUNC
-  mov rdx, 0777o
+  push_syscall_clobbers
+  mov rax, 2            ; open syscall
+  lea rdi, [r10 + rbp]  ; filename
+  mov rsi, 01102o       ; flags: RDWR|CREAT|TRUNC
+  mov rdx, 0777o        ; mode: everyone has access for rwx
+  syscall
+  mov r10, rax
+  pop_syscall_clobbers
+  mov [rcx], bl ; restore end replaced by null-byte
+  ret
+
+.open_reading:
+  ; make the filename null-terminated, saving the previous end byte in bl
+  mov rcx, rbp
+  add rcx, r10
+  add rcx, r11
+  mov bl, [rcx]
+  mov [rcx], byte 0
+  push_syscall_clobbers
+  mov rax, 2            ; open syscall
+  lea rdi, [r10 + rbp]  ; filename
+  mov rsi, 0            ; flags: RDONLY
+  mov rdx, 0            ; mode: ignored anyways because we don't create a file
+  syscall
+  mov r10, rax
+  pop_syscall_clobbers
+  mov [rcx], bl ; restore end replaced by null-byte
+  ret
+
+.read:
+  push_syscall_clobbers
+  mov rax, 0            ; read
+  mov rdi, r10          ; file descriptor
+  lea rsi, [r11 + rbp]  ; buffer.data
+  mov rdx, r12          ; buffer.len
   syscall
   mov r10, rax
   pop_syscall_clobbers
   ret
 
-.open_reading:
-  todo
-
-.open_writing:
-  todo
-
-.read:
-  todo
-
 .write:
   push_syscall_clobbers
-  mov rax, 1 ; write
-  mov rdi, r10 ; file descriptor
-  mov rsi, r11 ; buffer.data
-  mov rdx, r12 ; buffer.len
+  mov rax, 1            ; write
+  mov rdi, r10          ; file descriptor
+  lea rsi, [r11 + rbp]  ; buffer.data
+  mov rdx, r12          ; buffer.len
   syscall
-  ; TODO: assert that this worked
+  mov r10, rax
   pop_syscall_clobbers
   ret
 
