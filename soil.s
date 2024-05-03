@@ -279,14 +279,25 @@ macro emit_bytes [b] {
 ; point to a memory region where the binary has been loaded into memory.
 
 load_binary:
-  mov rax, [my_heap.head]
-  mov [binary], rax
+  mov rax, r10
+  mov rax, 2            ; open syscall
+  mov rdi, [saved_argv]
+  add rdi, 8
+  mov rdi, [rdi]        ; argv[1] -> the file path
+  mov rsi, 0            ; flags: RDONLY
+  mov rdx, 0            ; mode: ignored anyways because we don't create a file
+  syscall
+  cmp rax, 0
+  jle .couldnt_open_file
+  mov rdi, rax
+  mov rbx, [my_heap.head]
+  mov [binary], rbx
 .load_more:
   mov rax, 128
   call malloc
   mov rsi, rax ; buffer
   mov rax, 0   ; read
-  mov rdi, 0   ; stdin
+  ; the file descriptor is already in rdi
   mov rdx, 128 ; size
   syscall
   cmp rax, 128
@@ -296,7 +307,12 @@ load_binary:
   add rax, rsi ; address of end
   sub rax, [binary] ; length of binary
   mov [binary.len], rax
+  mov rax, 3   ; close syscall
+  ; the file descriptor is already in rdi
+  syscall
   ret
+.couldnt_open_file:
+  panic str_couldnt_open_file, str_couldnt_open_file.len
 
 
 ; Compiling the binary
@@ -1068,6 +1084,8 @@ run:
 main:
   mov rax, [rsp]
   mov [saved_argc], rax
+  cmp rax, 2
+  jl .too_few_args
   lea rax, [rsp + 8]
   mov [saved_argv], rax
   call init_heap
@@ -1075,6 +1093,8 @@ main:
   call compile_binary
   call run
   exit 0
+.too_few_args:
+  panic str_usage, str_usage.len
 
 
 ; Syscalls
@@ -1101,7 +1121,7 @@ syscalls:
 
 .exit:
   mov rax, 60 ; exit syscall
-  mov rdi, [rbp + r10] ; status code (from the a register)
+  mov dl, [rbp + r10] ; status code (from the a register)
   syscall
 
 .print:
@@ -1262,6 +1282,8 @@ my_heap:
   .head: dq 0
   .end: dq 0
 
+str_couldnt_open_file: db "Couldn't open file", 0xa
+  .len = ($ - str_couldnt_open_file)
 str_foo: db "foo", 0xa
   .len = ($ - str_foo)
 str_magic_bytes_mismatch: db "magic bytes don't match", 0xa
@@ -1283,6 +1305,8 @@ str_unknown_opcode: db "unknown opcode xx", 0xa
 str_unknown_syscall: db "unknown syscall xx", 0xa
   .len = ($ - str_unknown_syscall)
   .hex_offset = (.len - 3)
+str_usage: db "Usage: soil <file> [<args>]", 0xa
+  .len = ($ - str_usage)
 str_vm_panicked: db 0xa, "Oh no! The program panicked.", 0xa, 0xa
   .len = ($ - str_vm_panicked)
 

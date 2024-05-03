@@ -345,19 +345,19 @@ int main(int argc, char** argv) {
   global_argc = argc;
   global_argv = argv;
 
-  size_t cap = 8;
-  size_t len = 0;
-  Byte *bin = (Byte*) malloc(8);
+  if (argc < 2) panic(1, "Usage: %s <file> [<args>]\n", argv[0]);
+
+  FILE* file = fopen(argv[1], "rb");
+  if (file == NULL) panic(3, "couldn't open file %s", argv[1]);
+  fseek(file, 0L, SEEK_END);
+  size_t len = ftell(file);
+  rewind(file);
+  Byte *bin = (Byte*) malloc(len + 1);
   if (bin == NULL) panic(2, "out of memory");
-  for (int ch = fgetc(stdin); ch != EOF; ch = fgetc(stdin)) {
-    if (len == cap) {
-      cap *= 2;
-      bin = realloc(bin, cap);
-      if (bin == NULL) panic(2, "out of memory");
-    }
-    bin[len] = (Byte)ch;
-    len++;
-  }
+  size_t read = fread(bin, sizeof(char), len, file);
+  if (read != len) panic(4, "file size changed after fseek");
+  bin[read] = 0;
+  fclose(file);
 
   init_vm(bin, len);
   run();
