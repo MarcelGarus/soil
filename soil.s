@@ -1213,6 +1213,7 @@ syscalls:
 
 .argc:
   mov r10, [saved_argc]
+  dec r10
   ret
 
 .arg:
@@ -1221,8 +1222,12 @@ syscalls:
   ; mov rax, [saved_argc]
   ; cmp r10, rax
   ; jge .invalid_stuff
-  ; base pointer of the string given to us by the OS
   mov rax, r10
+  cmp rax, 0
+  je .load_arg
+  inc rax
+.load_arg:
+  ; base pointer of the string given to us by the OS
   imul rax, 8
   add rax, [saved_argv]
   mov rax, [rax]

@@ -313,13 +313,13 @@ void syscall_close(void) {
 int global_argc;
 void syscall_argc(void) {
   if (TRACE_SYSCALLS) eprintf("syscall argc()\n");
-  REGA = global_argc;
+  REGA = global_argc - 1;
 }
 char** global_argv;
 void syscall_arg(void) {
   if (TRACE_SYSCALLS) eprintf("syscall arg(%ld, %lx, %ld)\n", REGA, REGB, REGC);
   if (REGA < 0 || REGA >= global_argc) dump_and_panic("arg index out of bounds");
-  char* arg = global_argv[REGA];
+  char* arg = REGA == 0 ? global_argv[0] : global_argv[REGA + 1];
   int len = strlen(arg);
   int written = len > REGC ? REGC : len;
   for (int i = 0; i < written; i++) mem[REGB + i] = arg[i];
