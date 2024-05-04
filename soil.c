@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
+#include <unistd.h>
 
 #define MEMORY_SIZE 0x1000000
 #define TRACE_INSTRUCTIONS 0
@@ -325,6 +326,11 @@ void syscall_arg(void) {
   for (int i = 0; i < written; i++) mem[REGB + i] = arg[i];
   REGA = written;
 }
+void syscall_read_input(void) {
+  if (TRACE_SYSCALLS)
+    eprintf("syscall read_input(%lx, %ld)\n", REGA, REGB);
+  REGA = read(0, mem + REGA, REGB);
+}
 
 void init_syscalls(void) {
   for (int i = 0; i < 256; i++) syscall_handlers[i] = syscall_none;
@@ -339,6 +345,7 @@ void init_syscalls(void) {
   syscall_handlers[8] = syscall_close;
   syscall_handlers[9] = syscall_argc;
   syscall_handlers[10] = syscall_arg;
+  syscall_handlers[11] = syscall_read_input;
 }
 
 int main(int argc, char** argv) {

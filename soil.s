@@ -1113,6 +1113,7 @@ syscalls:
   dq .close        ;  8
   dq .argc         ;  9
   dq .arg          ; 10
+  dq .read_input   ; 11
   dq 246 dup .unknown
 
 .unknown:
@@ -1253,30 +1254,16 @@ syscalls:
   mov r10, rcx
   ret
 
-; void syscall_create() {
-;   char filename[REGB];
-;   for (int i = 0; i < REGB; i++) filename[i] = mem[REGA + i];
-;   filename[REGB] = 0;
-;   REGA = (Word)fopen(filename, "w+");
-; }
-; void syscall_open_reading() {
-;   char filename[REGB];
-;   for (int i = 0; i < REGB; i++) filename[i] = mem[REGA + i];
-;   filename[REGB] = 0;
-;   printf("opening filename %s\n", filename);
-;   REGA = (Word)fopen(filename, "r");
-; }
-; void syscall_open_writing() {
-;   char filename[REGB];
-;   for (int i = 0; i < REGB; i++) filename[i] = mem[REGA + i];
-;   filename[REGB] = 0;
-;   REGA = (Word)fopen(filename, "w+");
-; }
-; void syscall_read() { REGA = fread(mem + REGB, 1, REGC, (FILE*)REGA); }
-; void syscall_write() {
-;   // TODO: assert that this worked
-;   fwrite(mem + REGB, 1, REGC, (FILE*)REGA);
-; }
+.read_input:
+  push_syscall_clobbers
+  mov rax, 0            ; read
+  mov rdi, 0            ; stdin
+  lea rsi, [r10 + rbp]  ; buffer.data
+  mov rdx, r11          ; buffer.len
+  syscall
+  mov r10, rax
+  pop_syscall_clobbers
+  ret
 
 segment readable writable
 
