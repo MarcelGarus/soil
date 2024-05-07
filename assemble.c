@@ -132,10 +132,10 @@ Word parse_digits(Word radix) {
   Word num = 0;
   while (!is_at_end()) {
     Char c = current;
-    if (c >= '0' && c <= '0' + min(radix, 10))
+    if (c >= '0' && c < '0' + min(radix, 10))
       num = num * radix + c - '0';
-    else if (radix >= 10 && c >= 'a' && c <= 'a' + min(radix - 10, 26))
-      num = num * radix + c - 'a';
+    else if (radix >= 10 && c >= 'a' && c < 'a' + min(radix - 10, 26))
+      num = num * radix + c - 'a' + 10;
     else if (c != '_') break;
     advance();
     parsed_something = true;
