@@ -472,12 +472,18 @@ compile_binary:
   lea rax, [r11 * 4 + 4] ; for now, r11 is still the length of the byte code
   call malloc
   mov [byte_code_to_machine_code], rax
+  mov rbx, 0
+  mov [byte_code_to_machine_code.len], rbx
   lea rax, [r11 * 8 + 4] ; TODO: this is only a rough guess
   call malloc
   mov [machine_code_to_byte_code], rax
+  mov rbx, 0
+  mov [machine_code_to_byte_code.len], rbx
   mov rax, r11
   call malloc
   mov [patches], rax
+  mov rbx, 0
+  mov [patches.len], rbx
   add r11, r10 ; from now on, r11 points to the end of the byte code section
   ; To be able to change the memory protection of the machine code, it needs to
   ; be aligned to page boundaries.
@@ -1114,7 +1120,8 @@ syscalls:
   dq .argc         ;  9
   dq .arg          ; 10
   dq .read_input   ; 11
-  dq 246 dup .unknown
+  dq .execute      ; 12
+  dq 245 dup .unknown
 
 .unknown:
   replace_two_bytes_with_hex_byte (str_unknown_syscall + str_unknown_syscall.hex_offset), al
@@ -1264,6 +1271,31 @@ syscalls:
   mov r10, rax
   pop_syscall_clobbers
   ret
+
+.execute:
+  ; jmp .execute
+  mov rax, r11 ; binary.len
+  call malloc
+  mov [binary], rax
+  mov [binary.len], r11
+  add r10, rbp
+.copy_binary:
+  cmp r11, 0
+  je .clear_stack
+  mov bl, [r10]
+  mov [rax], bl
+  inc r10
+  inc rax
+  dec r11
+  jmp .copy_binary
+.clear_stack:
+  pop rax
+  cmp rax, label_after_call_to_jit
+  je .done_clearing_the_stack
+  jmp .clear_stack
+.done_clearing_the_stack:
+  call compile_binary
+  jmp run
 
 segment readable writable
 

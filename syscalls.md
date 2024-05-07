@@ -12,6 +12,7 @@
 | 9      | argc         |                 |              |            |      |
 | 10     | arg          | arg index       | buffer.data  | buffer.len |      |
 | 11     | read_input   | buffer.data     | buffer.len   |            |      |
+| 12     | execute      | binary.data     | binary.len   |            |      |
 
 - **exit**: Exits the program. This is guaranteed to never return.
 - **print**: Writes the message to stdout.
@@ -25,3 +26,4 @@
 - **argc**: Sets `a` to the number of arguments given to the program, including the program name itself.
 - **arg**: Fills the buffer with the indexth argument, at most buffer.len. Sets `a` to the amount of bytes that were written.
 - **read_input**: Reads from stdin into the buffer, at most buffer.len. Sets `a` to the amount of bytes that were read.
+- **execute**: Loads the given binary into the current VM, replacing the current execution.

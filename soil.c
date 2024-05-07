@@ -38,12 +38,12 @@ Word reg[8]; // sp, st, a, b, c, d, e, f
 #define REGF reg[7]
 
 Byte* byte_code;
-Word ip = 0;
+Word ip;
 
 Byte* mem;
 
 Word call_stack[1024];
-Word call_stack_len = 0;
+Word call_stack_len;
 
 void (*syscall_handlers[256])();
 
@@ -103,7 +103,10 @@ void init_syscalls(void);
 void init_vm(Byte* bin, int bin_len) {
   for (int i = 0; i < 8; i++) reg[i] = 0;
   SP = MEMORY_SIZE;
+  byte_code = 0;
+  ip = 0;
   mem = malloc(MEMORY_SIZE);
+  call_stack_len = 0;
 
   init_syscalls();
 
@@ -224,7 +227,7 @@ void run_single(void) {
       ip = call_stack[call_stack_len];
       break;
     }
-    case 0xf4: syscall_handlers[byte_code[ip + 1]](); ip += 2; break; // syscall
+    case 0xf4: ip += 2; syscall_handlers[byte_code[ip - 1]](); break; // syscall
     case 0xc0: ST = REG1 - REG2; ip += 2; break; // cmp
     case 0xc1: ST = ST == 0 ? 1 : 0; ip += 1; break; // isequal
     case 0xc2: ST = (int64_t)ST < 0 ? 1 : 0; ip += 1; break; // isless
@@ -331,6 +334,15 @@ void syscall_read_input(void) {
     eprintf("syscall read_input(%lx, %ld)\n", REGA, REGB);
   REGA = read(0, mem + REGA, REGB);
 }
+void syscall_execute(void) {
+  if (TRACE_SYSCALLS)
+    eprintf("syscall execute(%lx, %ld)\n", REGA, REGB);
+  int len = REGB;
+  Byte* bin = (Byte*)malloc(len);
+  if (bin == NULL) panic(2, "out of memory");
+  memcpy(bin, mem + REGA, len);
+  init_vm(bin, len);
+}
 
 void init_syscalls(void) {
   for (int i = 0; i < 256; i++) syscall_handlers[i] = syscall_none;
@@ -346,6 +358,7 @@ void init_syscalls(void) {
   syscall_handlers[9] = syscall_argc;
   syscall_handlers[10] = syscall_arg;
   syscall_handlers[11] = syscall_read_input;
+  syscall_handlers[12] = syscall_execute;
 }
 
 int main(int argc, char** argv) {
