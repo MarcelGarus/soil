@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <string.h>
 
 #define Char char
 #define Pos size_t
@@ -70,6 +71,10 @@ bool is_name(Char c) { return !is_whitespace(c) && c != ':'; }
 
 // The parser.
 
+Byte* recipe;
+int recipe_len;
+int cursor = 0;
+
 char current = (char)EOF;
 int line = 0;
 
@@ -78,8 +83,8 @@ void panic(Char* message) {
   exit(1);
 }
 
-bool is_at_end(void) { return current == (char)EOF; }
-void advance(void) { current = getchar(); }
+bool is_at_end(void) { return cursor >= recipe_len; }
+void advance(void) { current = recipe[cursor]; cursor++; }
 void consume_whitespace() {
   while (!is_at_end()) {
     if (current == ' ') advance();
@@ -327,6 +332,18 @@ void define_label(Str label) {
 }
 
 void main(int argc, char** argv) {
+  FILE* file = fopen(argv[1], "rb");
+  if (file == NULL) panic("couldn't open file");
+  fseek(file, 0L, SEEK_END);
+  recipe_len = ftell(file);
+  rewind(file);
+  recipe = (Byte*)malloc(recipe_len + 1);
+  if (recipe == NULL) panic("out of memory");
+  size_t read = fread(recipe, sizeof(char), recipe_len, file);
+  if (read != recipe_len) panic("file size changed after fseek");
+  recipe[read] = 0;
+  fclose(file);
+
   output = make_bytes();
   last_label = str("");
   init_labels();
@@ -472,7 +489,21 @@ void main(int argc, char** argv) {
   int debug_info_len = output.len - start_of_debug_info;
   overwrite_word(pointer_to_debug_info_len, debug_info_len);
 
-  for (int i = 0; i < output.len; i++) printf("%c", output.data[i]);
+  int i = 0;
+  for (i = strlen(argv[1]); i > 0 && argv[1][i - 1] != '.'; i--);
+  argv[1][i + 0] = 's';
+  argv[1][i + 1] = 'o';
+  argv[1][i + 2] = 'i';
+  argv[1][i + 3] = 'l';
+  argv[1][i + 4] = '\0';
+  FILE* outfile = fopen(argv[1], "w+");
+  if (outfile == NULL) panic("couldn't open file");
+  fwrite(output.data, 1, output.len, outfile);
+  fclose(outfile);
+
+  printf("Written to %s.\n", argv[1]);
+
+  // for (int i = 0; i < output.len; i++) printf("%c", output.data[i]);
   // printf("%02x ", output.data[i]);
 
   exit(0);
