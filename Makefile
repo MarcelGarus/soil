@@ -1,7 +1,9 @@
-all: assemble soil-asm soil-c
+all: assemble disassemble soil-asm soil-c
 
 assemble: assemble.c
 	gcc assemble.c -o assemble
+disassemble: disassemble.c
+	gcc disassemble.c -o disassemble
 
 soil-asm: soil.s
 	fasm soil.s soil-asm
