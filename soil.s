@@ -1113,7 +1113,7 @@ syscalls:
   dq .log          ;  2
   dq .create       ;  3
   dq .open_reading ;  4
-  dq .unknown      ;  5
+  dq .open_writing ;  5
   dq .read         ;  6
   dq .write        ;  7
   dq .close        ;  8
@@ -1181,6 +1181,24 @@ syscalls:
   mov rax, 2            ; open syscall
   lea rdi, [r10 + rbp]  ; filename
   mov rsi, 0            ; flags: RDONLY
+  mov rdx, 0            ; mode: ignored anyways because we don't create a file
+  syscall
+  mov r10, rax
+  pop_syscall_clobbers
+  mov [rcx], bl ; restore end replaced by null-byte
+  ret
+
+.open_writing:
+  ; make the filename null-terminated, saving the previous end byte in bl
+  mov rcx, rbp
+  add rcx, r10
+  add rcx, r11
+  mov bl, [rcx]
+  mov [rcx], byte 0
+  push_syscall_clobbers
+  mov rax, 2            ; open syscall
+  lea rdi, [r10 + rbp]  ; filename
+  mov rsi, 1101o        ; flags: RDWR | CREAT | TRUNC
   mov rdx, 0            ; mode: ignored anyways because we don't create a file
   syscall
   mov r10, rax
