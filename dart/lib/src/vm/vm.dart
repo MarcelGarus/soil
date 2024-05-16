@@ -184,7 +184,7 @@ class VM {
 
   void runSyscall(SyscallInstruction instruction) {
     Bytes getBytesFrom(Word offset, Word length) =>
-        memory.data.sublist(offset, offset + length);
+        memory.data.getRange(offset, offset + length);
     String getStringFromAB() =>
         getBytesFrom(registers.a, registers.b).decodeToString();
     Bytes getBytesFromAB() => getBytesFrom(registers.a, registers.b);

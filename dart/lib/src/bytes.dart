@@ -2,6 +2,9 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 extension type Bytes(Uint8List list) implements Object {
+  factory Bytes.fromString(String string) =>
+      Bytes(Uint8List.fromList(utf8.encode(string)));
+
   Byte operator [](Word index) => Byte(list[index.value]);
   void operator []=(Word index, Byte value) => list[index.value] = value.value;
 
@@ -13,8 +16,10 @@ extension type Bytes(Uint8List list) implements Object {
 
   Word get length => Word(list.length);
 
-  Bytes sublist(Word start, [Word? end]) =>
+  Bytes getRange(Word start, [Word? end]) =>
       Bytes(list.sublist(start.value, end?.value));
+  void setRange(Word start, Word end, Bytes bytes) =>
+      list.setRange(start.value, end.value, bytes.list);
 
   String decodeToString() => utf8.decode(list);
 }
@@ -22,6 +27,9 @@ extension type Bytes(Uint8List list) implements Object {
 // ignore: avoid-global-state, avoid-unused-parameters
 extension type const Byte._(int value) implements Object {
   const Byte(this.value) : assert(0 <= value && value < 0xFF);
+
+  factory Byte.min(Byte a, Byte b) => a < b ? a : b;
+  factory Byte.max(Byte a, Byte b) => a > b ? a : b;
 
   Byte operator &(Byte other) => Byte(value & other.value);
   Byte operator |(Byte other) => Byte(value | other.value);
@@ -42,6 +50,9 @@ extension type const Byte._(int value) implements Object {
 
 // ignore: avoid-global-state, avoid-unused-parameters
 extension type const Word(int value) implements Object {
+  factory Word.min(Word a, Word b) => a < b ? a : b;
+  factory Word.max(Word a, Word b) => a > b ? a : b;
+
   Word operator +(Word other) => Word(value + other.value);
   Word operator -(Word other) => Word(value - other.value);
   Word operator *(Word other) => Word(value * other.value);

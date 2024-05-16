@@ -143,7 +143,7 @@ class Parser {
     final end = offset + length;
     if (end > bytes.length) return const Result.err('Unexpected end of file');
 
-    final result = bytes.sublist(offset, end);
+    final result = bytes.getRange(offset, end);
     offset = end;
     return Result.ok(result);
   }
