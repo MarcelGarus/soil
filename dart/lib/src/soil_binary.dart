@@ -10,7 +10,7 @@ class SoilBinary with _$SoilBinary {
     required String? name,
     required String? description,
     required Memory? initialMemory,
-    required List<Label>? labels,
+    required Map<int, String>? labels,
     required Uint8List byteCode,
   }) = _SoilBinary;
 }
@@ -18,14 +18,6 @@ class SoilBinary with _$SoilBinary {
 @freezed
 class Memory with _$Memory {
   const factory Memory(Uint8List data) = _Memory;
-}
-
-@freezed
-class Label with _$Label {
-  const factory Label({
-    required int offset,
-    required String label,
-  }) = _Label;
 }
 
 @freezed
