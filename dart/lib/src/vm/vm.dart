@@ -1,14 +1,14 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:supernova/supernova.dart' hide Bytes;
 
-import 'bytes.dart';
+import '../bytes.dart';
+import '../soil_binary.dart';
 import 'instruction.dart';
-import 'soil_binary.dart';
+import 'syscall.dart';
 
 class VM {
-  VM(this.binary)
+  VM(this.binary, this.syscalls)
       : memory = _createMemory(binary.initialMemory),
         registers = Registers(memorySize);
 
@@ -28,6 +28,8 @@ class VM {
   }
 
   final SoilBinary binary;
+  final Syscalls syscalls;
+
   final Memory memory;
   final Registers registers;
   Word programCounter = const Word(0);
@@ -181,44 +183,46 @@ class VM {
   }
 
   void runSyscall(SyscallInstruction instruction) {
+    Bytes getBytesFrom(Word offset, Word length) =>
+        memory.data.sublist(offset, offset + length);
+    String getStringFromAB() =>
+        getBytesFrom(registers.a, registers.b).decodeToString();
+    Bytes getBytesFromAB() => getBytesFrom(registers.a, registers.b);
+    Bytes getBytesFromBC() => getBytesFrom(registers.b, registers.c);
+
     switch (Syscall.fromByte(instruction.number)) {
       case Syscall.exit:
-        logger.info('Exiting with code ${registers.a.value}');
-        exit(registers.a.value);
+        syscalls.exit(registers.a);
       case Syscall.print:
-        final message = memory.data
-            .sublist(registers.a, registers.a + registers.b)
-            .decodeToString();
-        stdout.write(message);
+        syscalls.print(getStringFromAB());
       case Syscall.log:
-        final message = memory.data
-            .sublist(registers.a, registers.a + registers.b)
-            .decodeToString();
-        stderr.write(message);
+        syscalls.log(getStringFromAB());
       case Syscall.create:
-        TODO('Implement `create` syscall.');
+        registers.a =
+            syscalls.create(getStringFromAB(), registers.c) ?? const Word(0);
       case Syscall.openReading:
-        TODO('Implement `open_reading` syscall.');
+        registers.a =
+            syscalls.openReading(getStringFromAB(), registers.c, registers.d) ??
+                const Word(0);
       case Syscall.openWriting:
-        TODO('Implement `open_writing` syscall.');
+        registers.a =
+            syscalls.openWriting(getStringFromAB(), registers.c, registers.d) ??
+                const Word(0);
       case Syscall.read:
-        TODO('Implement `read` syscall.');
+        registers.a = syscalls.read(registers.a, getBytesFromBC());
       case Syscall.write:
-        TODO('Implement `write` syscall.');
+        registers.a = syscalls.write(registers.a, getBytesFromBC());
       case Syscall.close:
-        TODO('Implement `close` syscall.');
+        registers.a =
+            syscalls.close(registers.a) ? const Word(1) : const Word(0);
       case Syscall.argc:
-        TODO('Implement `argc` syscall.');
+        registers.a = syscalls.argc();
       case Syscall.arg:
-        TODO('Implement `arg` syscall.');
+        registers.a = syscalls.arg(registers.a, getBytesFromBC());
       case Syscall.readInput:
-        for (var i = 0; i < registers.b.value; i++) {
-          final byte = stdin.readByteSync();
-          if (byte == -1) break;
-          memory.data[registers.a + Word(i)] = Byte(byte);
-        }
+        registers.a = syscalls.readInput(getBytesFromAB());
       case Syscall.execute:
-        TODO('Implement `execute` syscall.');
+        syscalls.execute(getBytesFromAB());
     }
   }
 }

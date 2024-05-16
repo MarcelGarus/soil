@@ -1,6 +1,6 @@
 import 'package:supernova/supernova.dart';
 
-import 'bytes.dart';
+import '../bytes.dart';
 
 part 'instruction.freezed.dart';
 
@@ -105,23 +105,4 @@ enum Register {
       Register.f => 'f',
     };
   }
-}
-
-enum Syscall {
-  exit,
-  print,
-  log,
-  create,
-  openReading,
-  openWriting,
-  read,
-  write,
-  close,
-  argc,
-  arg,
-  readInput,
-  execute;
-
-  const Syscall();
-  factory Syscall.fromByte(Byte byte) => values[byte.value];
 }
