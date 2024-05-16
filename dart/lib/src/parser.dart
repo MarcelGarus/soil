@@ -1,8 +1,6 @@
-import 'dart:convert';
-import 'dart:typed_data';
+import 'package:supernova/supernova.dart' hide Bytes;
 
-import 'package:supernova/supernova.dart';
-
+import 'bytes.dart';
 import 'soil_binary.dart';
 
 part 'parser.freezed.dart';
@@ -10,12 +8,12 @@ part 'parser.freezed.dart';
 class Parser {
   Parser._(this.bytes);
 
-  static Result<SoilBinary, String> parse(Uint8List bytes) =>
+  static Result<SoilBinary, String> parse(Bytes bytes) =>
       Parser._(bytes)._parse();
 
-  final Uint8List bytes;
+  final Bytes bytes;
 
-  int offset = 0;
+  Word offset = const Word(0);
   bool get isAtEnd => offset >= bytes.length;
 
   Result<SoilBinary, String> _parse() {
@@ -23,8 +21,8 @@ class Parser {
       String? name;
       String? description;
       Memory? initialMemory;
-      Map<int, String>? labels;
-      Uint8List? byteCode;
+      Map<Word, String>? labels;
+      Bytes? byteCode;
 
       while (true) {
         final sectionResult = _parseSection();
@@ -45,7 +43,7 @@ class Parser {
             initialMemory = Memory(section.content);
           case 2:
             if (name != null) return const Result.err('Multiple name sections');
-            name = utf8.decode(section.content);
+            name = section.content.decodeToString();
           case 3:
             if (labels != null) {
               return const Result.err('Multiple label sections');
@@ -60,7 +58,7 @@ class Parser {
             if (description != null) {
               return const Result.err('Multiple description sections');
             }
-            description = utf8.decode(section.content);
+            description = section.content.decodeToString();
           default:
             return Result.err('Unknown section type: ${section.type}');
         }
@@ -80,7 +78,7 @@ class Parser {
 
   static final _expectedMagicBytes = 'soil'.toUtf8();
   Result<Unit, String> _parseHeader() {
-    return _consumeBytes(4).andThen((magicBytes) {
+    return _consumeBytes(const Word(4)).andThen((magicBytes) {
       if (!const DeepCollectionEquality()
           .equals(magicBytes, _expectedMagicBytes)) {
         return Result.err('Invalid magic bytes: $magicBytes');
@@ -103,10 +101,10 @@ class Parser {
         );
   }
 
-  Result<Map<int, String>, String> _parseLabels() {
-    return _consumeU64().andThen((labelCount) {
-      final labels = <int, String>{};
-      for (var i = 0; i < labelCount; i++) {
+  Result<Map<Word, String>, String> _parseLabels() {
+    return _consumeWord().andThen((labelCount) {
+      final labels = <Word, String>{};
+      for (var i = 0; i < labelCount.value; i++) {
         final labelResult = _parseLabel();
         if (labelResult.isErr()) return Result.err(labelResult.unwrapErr());
         final label = labelResult.unwrap();
@@ -120,27 +118,28 @@ class Parser {
     });
   }
 
-  Result<({int offset, String label}), String> _parseLabel() {
-    return _consumeU64()
+  Result<({Word offset, String label}), String> _parseLabel() {
+    return _consumeWord()
         .andAlso((_) => _consumeLengthPrefixedBytes())
-        .map((it) => (offset: it.$1, label: utf8.decode(it.$2)));
+        .map((it) => (offset: it.$1, label: it.$2.decodeToString()));
   }
 
-  Result<int, String> _consumeByte() {
+  Result<Byte, String> _consumeByte() {
     if (isAtEnd) return const Result.err('Unexpected end of file');
 
-    return Result.ok(bytes[offset++]);
+    final byte = bytes[offset];
+    offset += const Word(1);
+    return Result.ok(byte);
   }
 
-  Result<int, String> _consumeU64() {
-    return _consumeBytes(8)
-        .map((it) => it.buffer.asByteData().getUint64(0, Endian.little));
+  Result<Word, String> _consumeWord() {
+    return _consumeBytes(const Word(8)).map((it) => it.getWord(const Word(0)));
   }
 
-  Result<Uint8List, String> _consumeLengthPrefixedBytes() =>
-      _consumeU64().andThen(_consumeBytes);
+  Result<Bytes, String> _consumeLengthPrefixedBytes() =>
+      _consumeWord().andThen(_consumeBytes);
 
-  Result<Uint8List, String> _consumeBytes(int length) {
+  Result<Bytes, String> _consumeBytes(Word length) {
     final end = offset + length;
     if (end > bytes.length) return const Result.err('Unexpected end of file');
 
@@ -153,9 +152,9 @@ class Parser {
 @freezed
 class _Section with _$Section {
   const factory _Section({
-    required int type,
-    required int contentStartOffset,
-    required Uint8List content,
+    required Byte type,
+    required Word contentStartOffset,
+    required Bytes content,
   }) = __Section;
 }
 

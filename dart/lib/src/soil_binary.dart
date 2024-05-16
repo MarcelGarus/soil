@@ -1,6 +1,6 @@
-import 'dart:typed_data';
+import 'package:supernova/supernova.dart' hide Bytes;
 
-import 'package:supernova/supernova.dart';
+import 'bytes.dart';
 
 part 'soil_binary.freezed.dart';
 
@@ -10,17 +10,12 @@ class SoilBinary with _$SoilBinary {
     required String? name,
     required String? description,
     required Memory? initialMemory,
-    required Map<int, String>? labels,
-    required Uint8List byteCode,
+    required Map<Word, String>? labels,
+    required Bytes byteCode,
   }) = _SoilBinary;
 }
 
 @freezed
 class Memory with _$Memory {
-  const factory Memory(Uint8List data) = _Memory;
-}
-
-@freezed
-class Instruction with _$Instruction {
-  const factory Instruction.nop() = NopInstruction;
+  const factory Memory(Bytes data) = _Memory;
 }
