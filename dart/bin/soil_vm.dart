@@ -17,6 +17,6 @@ Future<void> main(List<String> arguments) async {
   final soilBinary = Parser.parse(Bytes(bytes)).unwrap();
   logger.info('Parsed Soil binary: $soilBinary');
 
-  final vm = VM(soilBinary, const DefaultSyscalls(arguments: []));
+  final vm = VM(soilBinary, DefaultSyscalls(arguments: []));
   vm.runForever();
 }

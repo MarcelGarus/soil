@@ -1,5 +1,6 @@
 import 'package:supernova/supernova.dart' hide Bytes;
 import 'package:supernova/supernova_io.dart' as io;
+import 'package:supernova/supernova_io.dart';
 
 import '../bytes.dart';
 
@@ -40,9 +41,11 @@ abstract interface class Syscalls {
 }
 
 class DefaultSyscalls implements Syscalls {
-  const DefaultSyscalls({required this.arguments});
+  DefaultSyscalls({required this.arguments});
 
   final List<String> arguments;
+
+  // TODO(JonasWanke): Error handling
 
   @override
   void exit(Word status) {
@@ -51,27 +54,81 @@ class DefaultSyscalls implements Syscalls {
   }
 
   @override
-  void print(String message) => io.stdout.write(message);
+  void print(String message) => stdout.write(message);
   @override
-  void log(String message) => io.stderr.write(message);
+  void log(String message) => stderr.write(message);
+
+  final _fileDescriptors = <File?>[null];
+  (File, Word) _getFileAndDescriptor(String fileName) {
+    final index =
+        _fileDescriptors.firstIndexWhereOrNull((it) => it?.path == fileName);
+    if (index != null) return (_fileDescriptors[index]!, Word(index));
+
+    final file = File(fileName);
+    _fileDescriptors.add(file);
+    return (file, Word(_fileDescriptors.length - 1));
+  }
 
   @override
-  Word? create(String fileName, Word mode) =>
-      TODO('Implement `create` syscall.');
+  Word? create(String fileName, Word mode) {
+    final (file, fileDescriptor) = _getFileAndDescriptor(fileName);
+    try {
+      file.createSync();
+    } catch (e, st) {
+      logger.error('Error during create syscall', e, st);
+      return null;
+    }
+    return fileDescriptor;
+  }
+
+  final _openReading = <Word, RandomAccessFile>{};
   @override
-  Word? openReading(String fileName, Word flags, Word mode) =>
-      TODO('Implement `open_reading` syscall.');
+  Word? openReading(String fileName, Word flags, Word mode) {
+    final (file, fileDescriptor) = _getFileAndDescriptor(fileName);
+    try {
+      _openReading[fileDescriptor] = file.openSync();
+    } catch (e, st) {
+      logger.error('Error during open_reading syscall', e, st);
+      return null;
+    }
+    return fileDescriptor;
+  }
+
+  final _openWriting = <Word, IOSink>{};
   @override
-  Word? openWriting(String fileName, Word flags, Word mode) =>
-      TODO('Implement `open_writing` syscall.');
+  Word? openWriting(String fileName, Word flags, Word mode) {
+    final (file, fileDescriptor) = _getFileAndDescriptor(fileName);
+    try {
+      _openWriting[fileDescriptor] = file.openWrite();
+    } catch (e, st) {
+      logger.error('Error during open_writing syscall', e, st);
+      return null;
+    }
+    return fileDescriptor;
+  }
+
   @override
   Word read(Word fileDescriptor, Bytes buffer) =>
-      TODO('Implement `read` syscall.');
+      Word(_openReading[fileDescriptor]!.readIntoSync(buffer.list));
+
   @override
-  Word write(Word fileDescriptor, Bytes buffer) =>
-      TODO('Implement `write` syscall.');
+  Word write(Word fileDescriptor, Bytes buffer) {
+    _openWriting[fileDescriptor]!.add(buffer.list);
+    return buffer.length;
+  }
+
   @override
-  bool close(Word fileDescriptor) => TODO('Implement `close` syscall.');
+  bool close(Word fileDescriptor) {
+    try {
+      _fileDescriptors[fileDescriptor.value] = null;
+      _openReading.remove(fileDescriptor);
+      _openWriting.remove(fileDescriptor);
+      return true;
+    } catch (e, st) {
+      logger.error('Error during close syscall', e, st);
+      return false;
+    }
+  }
 
   @override
   Word argc() => Word(arguments.length);
@@ -87,7 +144,7 @@ class DefaultSyscalls implements Syscalls {
   Word readInput(Bytes buffer) {
     var i = const Word(0);
     for (; i < buffer.length; i += const Word(1)) {
-      final byte = io.stdin.readByteSync();
+      final byte = stdin.readByteSync();
       if (byte == -1) break;
       buffer[i] = Byte(byte);
     }
