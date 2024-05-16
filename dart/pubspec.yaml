@@ -1,0 +1,17 @@
+name: soil_vm
+repository: https://github.com/MarcelGarus/soil
+
+environment:
+  sdk: ^3.4.0
+
+dependencies:
+  freezed_annotation: ^2.4.1
+  supernova:
+    git:
+      url: https://github.com/JonasWanke/supernova.git
+      path: supernova
+      ref: c568672838f2982d0b04562f33b42f6bafa85f70
+
+dev_dependencies:
+  build_runner: ^2.4.10
+  freezed: ^2.5.3
