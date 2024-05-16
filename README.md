@@ -22,7 +22,7 @@ cat hello.recipe | ./assemble | ./soil-c
 
 Soil consists of three parts of state: registers, memory, and byte code.
 
-Soil is not a van Neumann machine – byte code and memory live in separate worlds.
+Soil is not a von Neumann machine – byte code and memory live in separate worlds.
 Byte code can only read/write the memory, not byte code itself.
 You can't reflect on the byte code itself, for example, to store pointers to instructions.
 This gives Soil implementations the freedom to JIT-compile the byte code on startup.
@@ -54,7 +54,7 @@ For now, the size of the memory is hardcoded to something big.
 
 ### Byte Code
 
-Byte code consists of a sequence of instructions and label definitions.
+Byte code consists of a sequence of instructions.
 
 Soil runs the instructions in sequence, starting from the first.
 Some instructions alter control flow by jumping to other instructions.
@@ -75,7 +75,7 @@ The following instructions are available:
 | d6     | storeb         | to: reg       | from: reg    | Interprets `to` as an address and sets the 8 bits at that address in memory to `from`.                |
 | d7     | push           | reg: reg      | -            | Decreases `sp` by 8, then runs `store sp reg`.                                                        |
 | d8     | pop            | reg: reg      | -            | Runs `load reg sp`, then increases `sp` by 8.                                                         |
-| f0     | jump           | to: word      | -            | Continues executing at the `to`th label (zero-indexed).                                               |
+| f0     | jump           | to: word      | -            | Continues executing at the `to`th byte.                                                               |
 | f1     | cjump          | to: word      | -            | Runs `jump to` if `st` is not 0.                                                                      |
 | f2     | call           | target: word  | -            | Runs `jump target`. Saves the formerly next instruction on an internal stack so that `ret` returns.   |
 | f3     | ret            | -             | -            | Returns to the instruction after the matching `call`.                                                 |
@@ -120,7 +120,7 @@ Soil binaries are stuctured like this:
 - labels
   - section type `3`
   - length (8 bytes)
-  - number of labels (position + label)
+  - number of labels (8 bytes)
   - for each label:
     - position in the byte code (8 bytes)
     - label length (8 bytes)
