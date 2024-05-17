@@ -1,0 +1,33 @@
+| A program that outputs a center dot.
+
+syscall 13 | ui_dimensions
+
+| c is the buffer size
+moveib c 3
+mul c a
+mul c b
+
+| clear the entire buffer with 255 to make it white
+moveib d 0
+moveib e 1
+moveib f 255 | white
+.clear:
+cmp d c isequal cjump .done
+storeb d f
+add d 1 jump .clear
+.done:
+
+| calculate the center
+moveib e 2
+move c a div c e | x
+move d b div d e | y
+mul d a add d c moveib e 3 mul d e | d = (y * width + x) * 3
+
+| set pixel to black
+moveib f 0
+moveib e 1
+storeb d f add d e
+storeb d f add d e
+storeb d f add d e
+
+syscall 14 | ui_render
