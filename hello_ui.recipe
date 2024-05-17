@@ -31,3 +31,6 @@ storeb d f add d e
 storeb d f add d e
 
 syscall 14 | ui_render
+
+busy_loop:
+jump busy_loop
