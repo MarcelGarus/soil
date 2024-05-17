@@ -21,7 +21,7 @@
 - **log**: Writes the message to stderr.
 - **create**: Creates the file. Sets `a` to a file descriptor or zero if it didn't work.
 - **open_reading**: Opens the file for reading. Sets `a` to a file descriptor or zero if it didn't work.
-- **open_reading**: Opens the file for writing. Sets `a` to a file descriptor or zero if it didn't work.
+- **open_writing**: Opens the file for writing. Sets `a` to a file descriptor or zero if it didn't work.
 - **read**: Reads from the file descriptor into the buffer, at most buffer.len. Sets `a` to the amount of bytes that were read.
 - **write**: Writes from the buffer to the file descriptor, at most buffer.len. Sets `a` to the amount of bytes that were written.
 - **close**: Closes the file descriptor. Sets `a` to one if it worked or zero if it didn't work.
