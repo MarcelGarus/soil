@@ -1,8 +1,7 @@
-import 'dart:typed_data';
-
 import 'package:supernova/supernova.dart' hide Bytes;
 
 import '../bytes.dart';
+import '../parser.dart';
 import '../soil_binary.dart';
 import 'instruction.dart';
 import 'syscall.dart';
@@ -16,18 +15,18 @@ class VM {
   static Memory _createMemory(Memory? initialMemory) {
     assert(initialMemory == null || initialMemory.data.length <= memorySize);
 
-    final memory = Uint8List(memorySize.value);
+    final memory = Bytes.zeros(memorySize);
     if (initialMemory != null) {
       memory.setRange(
-        0,
-        initialMemory.data.length.value,
-        initialMemory.data.list,
+        const Word(0),
+        initialMemory.data.length,
+        initialMemory.data,
       );
     }
-    return Memory(Bytes(memory));
+    return Memory(memory);
   }
 
-  final SoilBinary binary;
+  SoilBinary binary;
   final Syscalls syscalls;
 
   final Memory memory;
@@ -222,13 +221,41 @@ class VM {
       case Syscall.readInput:
         registers.a = syscalls.readInput(getBytesFromAB());
       case Syscall.execute:
-        syscalls.execute(getBytesFromAB());
+        binary = Parser.parse(getBytesFromAB()).unwrap();
+
+        final initialMemory = binary.initialMemory;
+        assert(
+          initialMemory == null || initialMemory.data.length <= memorySize,
+        );
+        memory.data.fill(const Byte(0));
+        if (initialMemory != null) {
+          memory.data.setRange(
+            const Word(0),
+            initialMemory.data.length,
+            initialMemory.data,
+          );
+        }
+
+        registers.reset(memorySize);
+        programCounter = const Word(0);
+        callStack.clear();
     }
   }
 }
 
 class Registers {
   Registers(Word memorySize) : stackPointer = memorySize;
+
+  void reset(Word memorySize) {
+    stackPointer = memorySize;
+    status = const Word(0);
+    a = const Word(0);
+    b = const Word(0);
+    c = const Word(0);
+    d = const Word(0);
+    e = const Word(0);
+    f = const Word(0);
+  }
 
   Word stackPointer;
   Word status = const Word(0);

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 extension type Bytes(Uint8List list) implements Object {
+  Bytes.zeros(Word length) : list = Uint8List(length.value);
   factory Bytes.fromString(String string) =>
       Bytes(Uint8List.fromList(utf8.encode(string)));
 
@@ -20,6 +21,9 @@ extension type Bytes(Uint8List list) implements Object {
       Bytes(list.sublist(start.value, end?.value));
   void setRange(Word start, Word end, Bytes bytes) =>
       list.setRange(start.value, end.value, bytes.list);
+  void fill(Byte value) => fillRange(const Word(0), length, value);
+  void fillRange(Word start, Word end, Byte value) =>
+      list.fillRange(start.value, end.value, value.value);
 
   String decodeToString() => utf8.decode(list);
 }

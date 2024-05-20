@@ -37,7 +37,6 @@ abstract interface class Syscalls {
   Word argc();
   Word arg(Word argIndex, Bytes buffer);
   Word readInput(Bytes buffer);
-  void execute(Bytes binary);
 }
 
 class DefaultSyscalls implements Syscalls {
@@ -150,7 +149,4 @@ class DefaultSyscalls implements Syscalls {
     }
     return i;
   }
-
-  @override
-  void execute(Bytes binary) => TODO('Implement `execute` syscall.');
 }
