@@ -18,7 +18,7 @@ class VMState with ChangeNotifier {
   bool get isRunning => _isRunning;
 
   void play() {
-    if (isRunning) return;
+    if (isRunning || !vm.status.isRunning) return;
 
     _isRunning = true;
     unawaited(_run());
@@ -41,6 +41,8 @@ class VMState with ChangeNotifier {
       // Give the UI some time to update
       await Future<void>.delayed(const Duration(milliseconds: 17));
     }
+    _isRunning = false;
+    notifyListeners();
   }
 
   void step() {

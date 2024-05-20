@@ -125,17 +125,19 @@ class _VMWidget extends HookWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('VM Status: ${state.vm.status}'),
-        const SizedBox(height: 16),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: RegistersWidget(state.vm.registers),
+        Row(
+          children: [
+            Toolbar(state),
+            const SizedBox(width: 16),
+            Expanded(child: Text('VM Status: ${state.vm.status}')),
+          ],
         ),
         const SizedBox(height: 16),
         Align(
           alignment: Alignment.centerLeft,
-          child: Toolbar(state),
+          child: RegistersWidget(state.vm),
         ),
+        const SizedBox(height: 16),
         Expanded(
           child: DecoratedBox(
             decoration: const BoxDecoration(

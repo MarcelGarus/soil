@@ -62,7 +62,7 @@ class VM {
       return;
     }
     final instruction = instructionResult.unwrap();
-    logger.trace('Decoded instruction: $instruction');
+    // logger.trace('Decoded instruction: $instruction');
 
     _execute(instruction);
   }

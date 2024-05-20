@@ -3,15 +3,21 @@ import 'package:soil_vm/soil_vm.dart';
 import 'package:supernova_flutter/supernova_flutter.dart';
 
 class RegistersWidget extends StatelessWidget {
-  const RegistersWidget(this.registers, {super.key});
+  const RegistersWidget(this.vm, {super.key});
 
-  final Registers registers;
+  final VM vm;
 
   @override
   Widget build(BuildContext context) {
     return Table(
       defaultColumnWidth: const IntrinsicColumnWidth(),
       children: [
+        TableRow(
+          children: [
+            const Tooltip(message: 'program counter', child: Text('pc: ')),
+            WordWidget(vm.programCounter),
+          ],
+        ),
         for (final register in Register.values)
           TableRow(
             children: [
@@ -19,7 +25,7 @@ class RegistersWidget extends StatelessWidget {
                 message: register.toFullString(),
                 child: Text('$register: '),
               ),
-              WordWidget(registers[register]),
+              WordWidget(vm.registers[register]),
             ],
           ),
       ],
