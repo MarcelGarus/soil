@@ -448,6 +448,16 @@ class VMStatus with _$VMStatus {
       error: VMResult.error,
     );
   }
+
+  @override
+  String toString() {
+    return when(
+      running: () => 'Running',
+      exited: (exitCode) => 'Exited with code $exitCode',
+      panicked: () => 'Panicked',
+      error: (message) => 'Error: $message',
+    );
+  }
 }
 
 @freezed

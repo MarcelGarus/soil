@@ -105,4 +105,17 @@ enum Register {
       Register.f => 'f',
     };
   }
+
+  String toFullString() {
+    return switch (this) {
+      Register.stackPointer => 'stack pointer',
+      Register.status => 'status register',
+      Register.a => 'general-purpose register a',
+      Register.b => 'general-purpose register b',
+      Register.c => 'general-purpose register c',
+      Register.d => 'general-purpose register d',
+      Register.e => 'general-purpose register e',
+      Register.f => 'general-purpose register f',
+    };
+  }
 }

@@ -4,6 +4,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:soil_vm/soil_vm.dart';
 import 'package:supernova_flutter/supernova_flutter.dart' hide Bytes;
 
+import 'registers.dart';
+
 Future<void> main() async {
   await initSupernova(shouldInitializeTimeMachine: false);
 
@@ -119,14 +121,14 @@ class _VMWidget extends HookWidget {
   Widget build(BuildContext context) {
     final syscalls = useMemoized(FlutterSyscalls.new, []);
     final vm = useMemoized(() => VM(binary, syscalls), [binary]);
-    final vmStatus = useState(vm.status);
+    final rebuild = useRebuildRequest();
     useEffect(
       () {
         var continueRunning = true;
         Future(() async {
           while (continueRunning && vm.status.isRunning) {
             vm.runInstructions(100);
-            vmStatus.value = vm.status;
+            rebuild.request();
 
             await Future<void>.delayed(const Duration(milliseconds: 17));
           }
@@ -139,7 +141,12 @@ class _VMWidget extends HookWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('VM Status: ${vmStatus.value}'),
+        Text('VM Status: ${vm.status}'),
+        const SizedBox(height: 16),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: RegistersWidget(vm.registers),
+        ),
         const SizedBox(height: 16),
         Expanded(
           child: DecoratedBox(

@@ -10,6 +10,7 @@ dependencies:
   file_picker: ^8.0.3
   flutter:
     sdk: flutter
+  google_fonts: ^6.2.1
   soil_vm:
     path: ../dart
   supernova_flutter:

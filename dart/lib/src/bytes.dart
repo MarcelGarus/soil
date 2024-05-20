@@ -57,6 +57,8 @@ extension type const Word(int value) implements Object {
   factory Word.min(Word a, Word b) => a < b ? a : b;
   factory Word.max(Word a, Word b) => a > b ? a : b;
 
+  static const bits = Byte(64);
+
   Word operator +(Word other) => Word(value + other.value);
   Word operator -(Word other) => Word(value - other.value);
   Word operator *(Word other) => Word(value * other.value);
@@ -78,5 +80,5 @@ extension type const Word(int value) implements Object {
 
   Byte get lowestByte => Byte(value & 0xFF);
 
-  String format() => '0x${value.toRadixString(16).padLeft(8)}';
+  String format() => '0x${value.toRadixString(16).padLeft(16, '0')}';
 }
