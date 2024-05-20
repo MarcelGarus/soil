@@ -50,6 +50,7 @@ abstract interface class Syscalls {
 extension type UiSize._(({Word width, Word height}) _value) implements Object {
   const UiSize(Word width, Word height)
       : _value = (width: width, height: height);
+  const UiSize.square(Word size) : _value = (width: size, height: size);
 
   static const zero = UiSize(Word(0), Word(0));
 

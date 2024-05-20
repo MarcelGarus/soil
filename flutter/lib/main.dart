@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:file_picker/file_picker.dart';
 import 'package:soil_vm/soil_vm.dart';
 import 'package:supernova_flutter/supernova_flutter.dart' hide Bytes;
@@ -28,6 +30,18 @@ class VMPage extends HookWidget {
     final error = useState<String?>(null);
     final binary = useState<SoilBinary?>(null);
 
+    void handleFileSelected(PlatformFile selectedFile) {
+      file.value = selectedFile;
+
+      final binaryResult = Parser.parse(Bytes(selectedFile.bytes!));
+      if (binaryResult.isErr()) {
+        error.value = binaryResult.unwrapErr();
+        return;
+      }
+      binary.value = binaryResult.unwrap();
+      error.value = null;
+    }
+
     return Scaffold(
       appBar: AppBar(title: const Text('Soil VM')),
       body: Padding(
@@ -36,17 +50,7 @@ class VMPage extends HookWidget {
           children: [
             _FileSelection(
               file: file.value,
-              onFileSelected: (it) {
-                file.value = it;
-
-                final binaryResult = Parser.parse(Bytes(it.bytes!));
-                if (binaryResult.isErr()) {
-                  error.value = binaryResult.unwrapErr();
-                  return;
-                }
-                binary.value = binaryResult.unwrap();
-                error.value = null;
-              },
+              onFileSelected: handleFileSelected,
             ),
             if (error.value != null) ...[
               const SizedBox(height: 16),
@@ -113,8 +117,8 @@ class _VMWidget extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
-    final vm =
-        useMemoized(() => VM(binary, DefaultSyscalls(arguments: [])), [binary]);
+    final syscalls = useMemoized(FlutterSyscalls.new, []);
+    final vm = useMemoized(() => VM(binary, syscalls), [binary]);
     final vmStatus = useState(vm.status);
     useEffect(
       () {
@@ -124,7 +128,7 @@ class _VMWidget extends HookWidget {
             vm.runInstructions(100);
             vmStatus.value = vm.status;
 
-            await Future<void>.value();
+            await Future<void>.delayed(const Duration(milliseconds: 17));
           }
         });
         return () => continueRunning = false;
@@ -132,6 +136,93 @@ class _VMWidget extends HookWidget {
       [vm],
     );
 
-    return Text('VM Status: ${vmStatus.value}');
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('VM Status: ${vmStatus.value}'),
+        const SizedBox(height: 16),
+        Expanded(
+          child: DecoratedBox(
+            decoration: const BoxDecoration(
+              border: Border.fromBorderSide(BorderSide()),
+            ),
+            child: CustomPaint(painter: syscalls.canvas),
+          ),
+        ),
+      ],
+    );
   }
+}
+
+class FlutterSyscalls extends DefaultSyscalls {
+  FlutterSyscalls() : super(arguments: []);
+
+  final canvas = VMCanvas();
+
+  @override
+  UiSize uiDimensions() => canvas.uiDimensions();
+  @override
+  void uiRender(Bytes buffer, UiSize size) =>
+      unawaited(canvas.uiRender(buffer, size));
+}
+
+class VMCanvas extends CustomPainter {
+  VMCanvas() : this._(ChangeNotifier());
+  VMCanvas._(this._notifier) : super(repaint: _notifier);
+
+  ChangeNotifier _notifier;
+
+  Size? _lastSize;
+  UiSize uiDimensions() {
+    if (_lastSize == null) return const UiSize.square(Word(100));
+
+    final size = _lastSize! / 10;
+    return UiSize(Word(size.width.toInt()), Word(size.height.toInt()));
+  }
+
+  final _paint = Paint();
+  ui.Image? _renderedImage;
+  Future<void> uiRender(Bytes buffer, UiSize size) async {
+    if (size.width == const Word(0) || size.height == const Word(0)) return;
+
+    final convertedBuffer = Uint8List(size.area.value * 4);
+    for (var i = 0; i < size.area.value; i++) {
+      convertedBuffer[4 * i] = buffer[Word(3 * i)].value;
+      convertedBuffer[4 * i + 1] = buffer[Word(3 * i + 1)].value;
+      convertedBuffer[4 * i + 2] = buffer[Word(3 * i + 2)].value;
+      convertedBuffer[4 * i + 3] = 255;
+    }
+
+    // ignore: discarded_futures
+    final descriptor = ui.ImageDescriptor.raw(
+      await ui.ImmutableBuffer.fromUint8List(convertedBuffer),
+      width: size.width.value,
+      height: size.height.value,
+      pixelFormat: ui.PixelFormat.rgba8888,
+    );
+    final codec = await descriptor.instantiateCodec();
+    final frameInfo = await codec.getNextFrame();
+    _renderedImage = frameInfo.image;
+    // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
+    _notifier.notifyListeners();
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    _lastSize = size;
+
+    if (_renderedImage == null) return;
+
+    canvas.save();
+    canvas.scale(
+      size.width / _renderedImage!.width,
+      size.height / _renderedImage!.height,
+    );
+    canvas.drawImage(_renderedImage!, Offset.zero, _paint);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) =>
+      this != oldDelegate;
 }
