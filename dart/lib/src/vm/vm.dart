@@ -6,6 +6,8 @@ import '../soil_binary.dart';
 import 'instruction.dart';
 import 'syscall.dart';
 
+part 'vm.freezed.dart';
+
 class VM {
   VM(this.binary, this.syscalls)
       : memory = _createMemory(binary.initialMemory),
@@ -34,145 +36,216 @@ class VM {
   Word programCounter = const Word(0);
   List<Word> callStack = [];
 
-  void runForever() {
-    while (true) {
+  VMStatus _status = const RunningVMStatus();
+  VMStatus get status => _status;
+
+  VMResult runForever() {
+    while (status.isRunning) {
+      runInstruction();
+    }
+    return status.toResult();
+  }
+
+  void runInstructions(int limit) {
+    for (var i = 0; i < limit; i++) {
+      if (!status.isRunning) return;
       runInstruction();
     }
   }
 
   void runInstruction() {
-    final instruction = _decode();
+    assert(status.isRunning);
+
+    final instructionResult = _decode();
+    if (instructionResult.isErr()) {
+      _status = VMStatus.error(instructionResult.unwrapErr());
+      return;
+    }
+    final instruction = instructionResult.unwrap();
     logger.trace('Decoded instruction: $instruction');
+
     _execute(instruction);
   }
 
-  Instruction _decode() {
+  Result<Instruction, String> _decode() {
     Register decodeRegister0() {
-      return Register
-          .values[binary.byteCode[programCounter + const Word(1)].value & 0x07];
+      final registerIndex =
+          binary.byteCode[programCounter + const Word(1)].value & 0x07;
+      return Register.values[registerIndex];
     }
 
     Register decodeRegister1() {
-      return Register.values[
-          (binary.byteCode[programCounter + const Word(1)].value >> 4) & 0x07];
+      final registerIndex =
+          (binary.byteCode[programCounter + const Word(1)].value >> 4) & 0x07;
+      return Register.values[registerIndex];
     }
 
-    final (instruction, programCounterIncrement) =
+    // ignore: omit_local_variable_types
+    final Result<(Instruction, int), String> decodeResult =
         switch (binary.byteCode[programCounter]) {
-      const Byte(0x00) => (const Instruction.nop(), 1),
-      const Byte(0xe0) => (const Instruction.panic(), 1),
-      const Byte(0xd0) => (
-          Instruction.move(decodeRegister0(), decodeRegister1()),
-          2,
-        ),
-      const Byte(0xd1) => (
-          Instruction.movei(
-            decodeRegister0(),
-            binary.byteCode.getWord(programCounter + const Word(2)),
+      const Byte(0x00) => const Result.ok((Instruction.nop(), 1)),
+      const Byte(0xe0) => const Result.ok((Instruction.panic(), 1)),
+      const Byte(0xd0) => Result.ok(
+          (
+            Instruction.move(decodeRegister0(), decodeRegister1()),
+            2,
           ),
-          10,
         ),
-      const Byte(0xd2) => (
-          Instruction.moveib(
-            decodeRegister0(),
-            binary.byteCode[programCounter + const Word(2)],
+      const Byte(0xd1) => Result.ok(
+          (
+            Instruction.movei(
+              decodeRegister0(),
+              binary.byteCode.getWord(programCounter + const Word(2)),
+            ),
+            10,
           ),
-          3,
         ),
-      const Byte(0xd3) => (
-          Instruction.load(decodeRegister0(), decodeRegister1()),
-          2,
-        ),
-      const Byte(0xd4) => (
-          Instruction.loadb(decodeRegister0(), decodeRegister1()),
-          2,
-        ),
-      const Byte(0xd5) => (
-          Instruction.store(decodeRegister0(), decodeRegister1()),
-          2,
-        ),
-      const Byte(0xd6) => (
-          Instruction.storeb(decodeRegister0(), decodeRegister1()),
-          2,
-        ),
-      const Byte(0xd7) => (Instruction.push(decodeRegister0()), 2),
-      const Byte(0xd8) => (Instruction.pop(decodeRegister0()), 2),
-      const Byte(0xf0) => (
-          Instruction.jump(
-            binary.byteCode.getWord(programCounter + const Word(1)),
+      const Byte(0xd2) => Result.ok(
+          (
+            Instruction.moveib(
+              decodeRegister0(),
+              binary.byteCode[programCounter + const Word(2)],
+            ),
+            3,
           ),
-          9,
         ),
-      const Byte(0xf1) => (
-          Instruction.cjump(
-            binary.byteCode.getWord(programCounter + const Word(1)),
+      const Byte(0xd3) => Result.ok(
+          (
+            Instruction.load(decodeRegister0(), decodeRegister1()),
+            2,
           ),
-          9,
         ),
-      const Byte(0xf2) => (
-          Instruction.call(
-            binary.byteCode.getWord(programCounter + const Word(1)),
+      const Byte(0xd4) => Result.ok(
+          (
+            Instruction.loadb(decodeRegister0(), decodeRegister1()),
+            2,
           ),
-          9,
         ),
-      const Byte(0xf3) => (const Instruction.ret(), 1),
-      const Byte(0xf4) => (
-          Instruction.syscall(binary.byteCode[programCounter + const Word(1)]),
-          2,
+      const Byte(0xd5) => Result.ok(
+          (
+            Instruction.store(decodeRegister0(), decodeRegister1()),
+            2,
+          ),
         ),
-      const Byte(0xc0) => (
-          Instruction.cmp(decodeRegister0(), decodeRegister1()),
-          2,
+      const Byte(0xd6) => Result.ok(
+          (
+            Instruction.storeb(decodeRegister0(), decodeRegister1()),
+            2,
+          ),
         ),
-      const Byte(0xc1) => (const Instruction.isequal(), 1),
-      const Byte(0xc2) => (const Instruction.isless(), 1),
-      const Byte(0xc3) => (const Instruction.isgreater(), 1),
-      const Byte(0xc4) => (const Instruction.islessequal(), 1),
-      const Byte(0xc5) => (const Instruction.isgreaterequal(), 1),
-      const Byte(0xa0) => (
-          Instruction.add(decodeRegister0(), decodeRegister1()),
-          2,
+      const Byte(0xd7) => Result.ok((Instruction.push(decodeRegister0()), 2)),
+      const Byte(0xd8) => Result.ok((Instruction.pop(decodeRegister0()), 2)),
+      const Byte(0xf0) => Result.ok(
+          (
+            Instruction.jump(
+              binary.byteCode.getWord(programCounter + const Word(1)),
+            ),
+            9,
+          ),
         ),
-      const Byte(0xa1) => (
-          Instruction.sub(decodeRegister0(), decodeRegister1()),
-          2,
+      const Byte(0xf1) => Result.ok(
+          (
+            Instruction.cjump(
+              binary.byteCode.getWord(programCounter + const Word(1)),
+            ),
+            9,
+          ),
         ),
-      const Byte(0xa2) => (
-          Instruction.mul(decodeRegister0(), decodeRegister1()),
-          2,
+      const Byte(0xf2) => Result.ok(
+          (
+            Instruction.call(
+              binary.byteCode.getWord(programCounter + const Word(1)),
+            ),
+            9,
+          ),
         ),
-      const Byte(0xa3) => (
-          Instruction.div(decodeRegister0(), decodeRegister1()),
-          2,
+      const Byte(0xf3) => const Result.ok((Instruction.ret(), 1)),
+      const Byte(0xf4) => Result.ok(
+          (
+            Instruction.syscall(
+              binary.byteCode[programCounter + const Word(1)],
+            ),
+            2,
+          ),
         ),
-      const Byte(0xa4) => (
-          Instruction.rem(decodeRegister0(), decodeRegister1()),
-          2,
+      const Byte(0xc0) => Result.ok(
+          (
+            Instruction.cmp(decodeRegister0(), decodeRegister1()),
+            2,
+          ),
         ),
-      const Byte(0xb0) => (
-          Instruction.and(decodeRegister0(), decodeRegister1()),
-          2,
+      const Byte(0xc1) => const Result.ok((Instruction.isequal(), 1)),
+      const Byte(0xc2) => const Result.ok((Instruction.isless(), 1)),
+      const Byte(0xc3) => const Result.ok((Instruction.isgreater(), 1)),
+      const Byte(0xc4) => const Result.ok((Instruction.islessequal(), 1)),
+      const Byte(0xc5) => const Result.ok((Instruction.isgreaterequal(), 1)),
+      const Byte(0xa0) => Result.ok(
+          (
+            Instruction.add(decodeRegister0(), decodeRegister1()),
+            2,
+          ),
         ),
-      const Byte(0xb1) => (
-          Instruction.or(decodeRegister0(), decodeRegister1()),
-          2,
+      const Byte(0xa1) => Result.ok(
+          (
+            Instruction.sub(decodeRegister0(), decodeRegister1()),
+            2,
+          ),
         ),
-      const Byte(0xb2) => (
-          Instruction.xor(decodeRegister0(), decodeRegister1()),
-          2,
+      const Byte(0xa2) => Result.ok(
+          (
+            Instruction.mul(decodeRegister0(), decodeRegister1()),
+            2,
+          ),
         ),
-      const Byte(0xb3) => (Instruction.not(decodeRegister0()), 2),
+      const Byte(0xa3) => Result.ok(
+          (
+            Instruction.div(decodeRegister0(), decodeRegister1()),
+            2,
+          ),
+        ),
+      const Byte(0xa4) => Result.ok(
+          (
+            Instruction.rem(decodeRegister0(), decodeRegister1()),
+            2,
+          ),
+        ),
+      const Byte(0xb0) => Result.ok(
+          (
+            Instruction.and(decodeRegister0(), decodeRegister1()),
+            2,
+          ),
+        ),
+      const Byte(0xb1) => Result.ok(
+          (
+            Instruction.or(decodeRegister0(), decodeRegister1()),
+            2,
+          ),
+        ),
+      const Byte(0xb2) => Result.ok(
+          (
+            Instruction.xor(decodeRegister0(), decodeRegister1()),
+            2,
+          ),
+        ),
+      const Byte(0xb3) => Result.ok((Instruction.not(decodeRegister0()), 2)),
       // ignore: pattern_never_matches_value_type
-      final opcode => throw StateError('Unknown opcode: ${opcode.format()}'),
+      final opcode => Result.err(
+          'Unknown opcode at ${programCounter.format()}: ${opcode.format()}',
+        ),
     };
+    if (decodeResult.isErr()) {
+      return Result.err(decodeResult.unwrapErr());
+    }
+    final (instruction, programCounterIncrement) = decodeResult.unwrap();
+
     programCounter += Word(programCounterIncrement);
-    return instruction;
+    return Result.ok(instruction);
   }
 
   void _execute(Instruction instruction) {
     instruction.when(
       nop: () {},
-      panic: () => throw Exception('Panic instruction'),
+      panic: () => _status = const VMStatus.panicked(),
       move: (to, from) => registers[to] = registers[from],
       movei: (to, value) => registers[to] = value,
       moveib: (to, value) => registers[to] = value.asWord,
@@ -234,7 +307,7 @@ class VM {
 
     switch (Syscall.fromByte(instruction.number)) {
       case Syscall.exit:
-        syscalls.exit(registers.a);
+        _status = VMStatus.exited(registers.a);
       case Syscall.print:
         syscalls.print(getStringFromAB());
       case Syscall.log:
@@ -355,4 +428,32 @@ class Registers {
         f = value;
     }
   }
+}
+
+@freezed
+class VMStatus with _$VMStatus {
+  const factory VMStatus.running() = RunningVMStatus;
+  const factory VMStatus.exited(Word exitCode) = ExitedVMStatus;
+  const factory VMStatus.panicked() = PanickedVMStatus;
+  const factory VMStatus.error(String message) = ErrorVMStatus;
+  const VMStatus._();
+
+  bool get isRunning => this is RunningVMStatus;
+
+  VMResult toResult() {
+    return when(
+      running: () => throw StateError('VM is still running'),
+      exited: VMResult.exited,
+      panicked: VMResult.panicked,
+      error: VMResult.error,
+    );
+  }
+}
+
+@freezed
+class VMResult with _$VMResult {
+  const factory VMResult.exited(Word exitCode) = ExitedVMResult;
+  const factory VMResult.panicked() = PanickedVMResult;
+  const factory VMResult.error(String message) = ErrorVMResult;
+  const VMResult._();
 }

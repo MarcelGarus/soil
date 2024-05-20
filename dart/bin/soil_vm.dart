@@ -18,5 +18,13 @@ Future<void> main(List<String> arguments) async {
   logger.info('Parsed Soil binary: $soilBinary');
 
   final vm = VM(soilBinary, DefaultSyscalls(arguments: []));
-  vm.runForever();
+  final result = vm.runForever();
+  result.when(
+    exited: (exitCode) {
+      logger.info('VM exited with code $exitCode');
+      exit(exitCode.value);
+    },
+    panicked: () => logger.error('VM panicked.'),
+    error: (message) => logger.error('VM errored: $message'),
+  );
 }

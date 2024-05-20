@@ -1,5 +1,4 @@
 import 'package:supernova/supernova.dart' hide Bytes;
-import 'package:supernova/supernova_io.dart' as io;
 import 'package:supernova/supernova_io.dart';
 
 import '../bytes.dart';
@@ -27,8 +26,6 @@ enum Syscall {
 
 abstract interface class Syscalls {
   const Syscalls();
-
-  void exit(Word status);
 
   void print(String message);
   void log(String message);
@@ -68,12 +65,6 @@ class DefaultSyscalls implements Syscalls {
   final List<String> arguments;
 
   // TODO(JonasWanke): Error handling
-
-  @override
-  void exit(Word status) {
-    logger.info('Exiting with code $status');
-    io.exit(status.value);
-  }
 
   @override
   void print(String message) => stdout.write(message);
