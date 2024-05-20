@@ -1,10 +1,13 @@
 import 'package:file_picker/file_picker.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:soil_vm/soil_vm.dart';
 import 'package:supernova_flutter/supernova_flutter.dart' hide Bytes;
 
 import 'vm_state.dart';
 import 'widgets/registers.dart';
 import 'widgets/toolbar.dart';
+
+final monospaceTextStyle = GoogleFonts.firaCode();
 
 Future<void> main() async {
   await initSupernova(shouldInitializeTimeMachine: false);
@@ -122,6 +125,28 @@ class _VMWidget extends HookWidget {
   Widget build(BuildContext context) {
     useListenable(state);
 
+    final statusWidget = state.vm.status.when(
+      running: () {
+        final status = state.isRunning ? 'Running' : 'Paused';
+        final instruction = state.vm
+            .decodeNextInstruction()
+            .map<InlineSpan>(InstructionSpan.new)
+            .unwrapOrElse((it) => TextSpan(text: it));
+        return Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(text: '$status at '),
+              WordSpan(state.vm.programCounter),
+              const TextSpan(text: ': '),
+              instruction,
+            ],
+          ),
+        );
+      },
+      exited: (exitCode) => Text('Exited with code $exitCode'),
+      panicked: () => const Text('Panicked'),
+      error: (error) => Text('Error: $error'),
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -129,7 +154,7 @@ class _VMWidget extends HookWidget {
           children: [
             Toolbar(state),
             const SizedBox(width: 16),
-            Expanded(child: Text('VM Status: ${state.vm.status}')),
+            Expanded(child: statusWidget),
           ],
         ),
         const SizedBox(height: 16),
@@ -147,6 +172,45 @@ class _VMWidget extends HookWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class InstructionSpan extends WidgetSpan {
+  InstructionSpan(Instruction instruction)
+      : super(
+          alignment: PlaceholderAlignment.baseline,
+          baseline: TextBaseline.alphabetic,
+          child: InstructionWidget(instruction),
+        );
+}
+
+class InstructionWidget extends StatelessWidget {
+  const InstructionWidget(this.instruction, {super.key});
+
+  final Instruction instruction;
+
+  @override
+  Widget build(BuildContext context) {
+    final binary = instruction.toString(base: Base.binary);
+    final decimal = instruction.toString(base: Base.decimal);
+    final hex = instruction.toString();
+
+    return Tooltip(
+      richMessage: TextSpan(
+        children: [
+          const TextSpan(text: 'Binary: '),
+          TextSpan(text: binary, style: monospaceTextStyle),
+          const TextSpan(text: '\nDecimal: '),
+          TextSpan(text: decimal, style: monospaceTextStyle),
+          const TextSpan(text: '\nHex: '),
+          TextSpan(text: hex, style: monospaceTextStyle),
+        ],
+      ),
+      child: Text(
+        instruction.toString(),
+        style: monospaceTextStyle,
+      ),
     );
   }
 }

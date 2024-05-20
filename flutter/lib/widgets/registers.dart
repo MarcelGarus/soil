@@ -1,6 +1,7 @@
-import 'package:google_fonts/google_fonts.dart';
 import 'package:soil_vm/soil_vm.dart';
 import 'package:supernova_flutter/supernova_flutter.dart';
+
+import '../main.dart';
 
 class RegistersWidget extends StatelessWidget {
   const RegistersWidget(this.vm, {super.key});
@@ -33,18 +34,25 @@ class RegistersWidget extends StatelessWidget {
   }
 }
 
+class WordSpan extends WidgetSpan {
+  WordSpan(Word word)
+      : super(
+          alignment: PlaceholderAlignment.baseline,
+          baseline: TextBaseline.alphabetic,
+          child: WordWidget(word),
+        );
+}
+
 class WordWidget extends StatelessWidget {
-  const WordWidget(this.value, {super.key});
+  const WordWidget(this.word, {super.key});
 
-  static final monospaceTextStyle = GoogleFonts.firaCode();
-
-  final Word value;
+  final Word word;
 
   @override
   Widget build(BuildContext context) {
-    final binary = value.formatBinary();
-    final decimal = value.formatDecimal();
-    final hex = value.formatHex();
+    final binary = word.format(base: Base.binary);
+    final decimal = word.format(base: Base.decimal);
+    final hex = word.format();
 
     return Tooltip(
       richMessage: TextSpan(
@@ -57,8 +65,7 @@ class WordWidget extends StatelessWidget {
           TextSpan(text: hex, style: monospaceTextStyle),
         ],
       ),
-      textAlign: TextAlign.end,
-      child: Text('0x$hex', style: monospaceTextStyle),
+      child: Text(hex, style: monospaceTextStyle),
     );
   }
 }

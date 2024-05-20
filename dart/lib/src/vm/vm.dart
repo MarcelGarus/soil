@@ -56,8 +56,7 @@ class VM {
   void runInstruction() {
     assert(status.isRunning);
 
-    final instructionResult =
-        Instruction.decode(binary.byteCode, programCounter);
+    final instructionResult = decodeNextInstruction();
     if (instructionResult.isErr()) {
       _status = VMStatus.error(instructionResult.unwrapErr());
       return;
@@ -68,6 +67,9 @@ class VM {
 
     _execute(instruction);
   }
+
+  Result<Instruction, String> decodeNextInstruction() =>
+      Instruction.decode(binary.byteCode, programCounter);
 
   void _execute(Instruction instruction) {
     instruction.when(

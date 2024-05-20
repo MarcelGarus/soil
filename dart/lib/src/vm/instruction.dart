@@ -117,10 +117,8 @@ class Instruction with _$Instruction {
         Result.ok(Instruction.xor(decodeRegister0(), decodeRegister1())),
       const Byte(0xb3) => Result.ok(Instruction.not(decodeRegister0())),
       // ignore: pattern_never_matches_value_type
-      final opcode => Result.err(
-          'Unknown opcode at 0x${offset.formatHex()}: '
-          '${opcode.format()}',
-        ),
+      final opcode =>
+        Result.err('Unknown opcode at ${offset.format()}: ${opcode.format()}'),
     };
   }
 
@@ -161,24 +159,27 @@ class Instruction with _$Instruction {
   }
 
   @override
-  String toString() {
+  String toString({Base base = Base.hex}) {
     return when(
       nop: () => 'nop',
       panic: () => 'panic',
       move: (to, from) => 'move $to $from',
-      movei: (to, value) => 'movei $to $value',
-      moveib: (to, value) => 'moveib $to $value',
+      movei: (to, value) =>
+          'movei $to ${value.format(base: base, shouldPad: false)}',
+      moveib: (to, value) =>
+          'moveib $to ${value.format(base: base, shouldPad: false)}',
       load: (to, from) => 'load $to $from',
       loadb: (to, from) => 'loadb $to $from',
       store: (to, from) => 'store $to $from',
       storeb: (to, from) => 'storeb $to $from',
       push: (reg) => 'push $reg',
       pop: (reg) => 'pop $reg',
-      jump: (to) => 'jump $to',
-      cjump: (to) => 'cjump $to',
-      call: (target) => 'call $target',
+      jump: (to) => 'jump ${to.format(base: base, shouldPad: false)}',
+      cjump: (to) => 'cjump ${to.format(base: base, shouldPad: false)}',
+      call: (target) => 'call ${target.format(base: base, shouldPad: false)}',
       ret: () => 'ret',
-      syscall: (number) => 'syscall $number',
+      syscall: (number) =>
+          'syscall ${number.format(base: base, shouldPad: false)}',
       cmp: (left, right) => 'cmp $left $right',
       isequal: () => 'isequal',
       isless: () => 'isless',

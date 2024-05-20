@@ -21,7 +21,7 @@ class Toolbar extends StatelessWidget {
         else
           const ButtonSegment(
             value: _ToolbarAction.play,
-            icon: Icon(Symbols.play_pause),
+            icon: Icon(Symbols.play_arrow),
             tooltip: 'Continue',
           ),
         ButtonSegment(
