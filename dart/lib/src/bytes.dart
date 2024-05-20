@@ -30,7 +30,7 @@ extension type Bytes(Uint8List list) implements Object {
 
 // ignore: avoid-global-state, avoid-unused-parameters
 extension type const Byte._(int value) implements Object {
-  const Byte(this.value) : assert(0 <= value && value < 0xFF);
+  const Byte(this.value) : assert(0 <= value && value <= 0xFF);
 
   factory Byte.min(Byte a, Byte b) => a < b ? a : b;
   factory Byte.max(Byte a, Byte b) => a > b ? a : b;
