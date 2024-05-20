@@ -11,6 +11,7 @@ dependencies:
   flutter:
     sdk: flutter
   google_fonts: ^6.2.1
+  material_symbols_icons: ^4.2744.0
   soil_vm:
     path: ../dart
   supernova_flutter:
