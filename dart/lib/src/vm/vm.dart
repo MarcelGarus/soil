@@ -59,67 +59,110 @@ class VM {
 
     final (instruction, programCounterIncrement) =
         switch (binary.byteCode[programCounter]) {
-      0x00 => (const Instruction.nop(), 1),
-      0xe0 => (const Instruction.panic(), 1),
-      0xd0 => (Instruction.move(decodeRegister0(), decodeRegister1()), 2),
-      0xd1 => (
+      const Byte(0x00) => (const Instruction.nop(), 1),
+      const Byte(0xe0) => (const Instruction.panic(), 1),
+      const Byte(0xd0) => (
+          Instruction.move(decodeRegister0(), decodeRegister1()),
+          2,
+        ),
+      const Byte(0xd1) => (
           Instruction.movei(
             decodeRegister0(),
             binary.byteCode.getWord(programCounter + const Word(2)),
           ),
           10,
         ),
-      0xd2 => (
+      const Byte(0xd2) => (
           Instruction.moveib(
             decodeRegister0(),
             binary.byteCode[programCounter + const Word(2)],
           ),
           3,
         ),
-      0xd3 => (Instruction.load(decodeRegister0(), decodeRegister1()), 2),
-      0xd4 => (Instruction.loadb(decodeRegister0(), decodeRegister1()), 2),
-      0xd5 => (Instruction.store(decodeRegister0(), decodeRegister1()), 2),
-      0xd6 => (Instruction.storeb(decodeRegister0(), decodeRegister1()), 2),
-      0xd7 => (Instruction.push(decodeRegister0()), 2),
-      0xd8 => (Instruction.pop(decodeRegister0()), 2),
-      0xf0 => (
+      const Byte(0xd3) => (
+          Instruction.load(decodeRegister0(), decodeRegister1()),
+          2,
+        ),
+      const Byte(0xd4) => (
+          Instruction.loadb(decodeRegister0(), decodeRegister1()),
+          2,
+        ),
+      const Byte(0xd5) => (
+          Instruction.store(decodeRegister0(), decodeRegister1()),
+          2,
+        ),
+      const Byte(0xd6) => (
+          Instruction.storeb(decodeRegister0(), decodeRegister1()),
+          2,
+        ),
+      const Byte(0xd7) => (Instruction.push(decodeRegister0()), 2),
+      const Byte(0xd8) => (Instruction.pop(decodeRegister0()), 2),
+      const Byte(0xf0) => (
           Instruction.jump(
             binary.byteCode.getWord(programCounter + const Word(1)),
           ),
           9,
         ),
-      0xf1 => (
+      const Byte(0xf1) => (
           Instruction.cjump(
             binary.byteCode.getWord(programCounter + const Word(1)),
           ),
           9,
         ),
-      0xf2 => (
+      const Byte(0xf2) => (
           Instruction.call(
             binary.byteCode.getWord(programCounter + const Word(1)),
           ),
           9,
         ),
-      0xf3 => (const Instruction.ret(), 1),
-      0xf4 => (
+      const Byte(0xf3) => (const Instruction.ret(), 1),
+      const Byte(0xf4) => (
           Instruction.syscall(binary.byteCode[programCounter + const Word(1)]),
           2,
         ),
-      0xc0 => (Instruction.cmp(decodeRegister0(), decodeRegister1()), 2),
-      0xc1 => (const Instruction.isequal(), 1),
-      0xc2 => (const Instruction.isless(), 1),
-      0xc3 => (const Instruction.isgreater(), 1),
-      0xc4 => (const Instruction.islessequal(), 1),
-      0xc5 => (const Instruction.isgreaterequal(), 1),
-      0xa0 => (Instruction.add(decodeRegister0(), decodeRegister1()), 2),
-      0xa1 => (Instruction.sub(decodeRegister0(), decodeRegister1()), 2),
-      0xa2 => (Instruction.mul(decodeRegister0(), decodeRegister1()), 2),
-      0xa3 => (Instruction.div(decodeRegister0(), decodeRegister1()), 2),
-      0xa4 => (Instruction.rem(decodeRegister0(), decodeRegister1()), 2),
-      0xb0 => (Instruction.and(decodeRegister0(), decodeRegister1()), 2),
-      0xb1 => (Instruction.or(decodeRegister0(), decodeRegister1()), 2),
-      0xb2 => (Instruction.xor(decodeRegister0(), decodeRegister1()), 2),
-      0xb3 => (Instruction.not(decodeRegister0()), 2),
+      const Byte(0xc0) => (
+          Instruction.cmp(decodeRegister0(), decodeRegister1()),
+          2,
+        ),
+      const Byte(0xc1) => (const Instruction.isequal(), 1),
+      const Byte(0xc2) => (const Instruction.isless(), 1),
+      const Byte(0xc3) => (const Instruction.isgreater(), 1),
+      const Byte(0xc4) => (const Instruction.islessequal(), 1),
+      const Byte(0xc5) => (const Instruction.isgreaterequal(), 1),
+      const Byte(0xa0) => (
+          Instruction.add(decodeRegister0(), decodeRegister1()),
+          2,
+        ),
+      const Byte(0xa1) => (
+          Instruction.sub(decodeRegister0(), decodeRegister1()),
+          2,
+        ),
+      const Byte(0xa2) => (
+          Instruction.mul(decodeRegister0(), decodeRegister1()),
+          2,
+        ),
+      const Byte(0xa3) => (
+          Instruction.div(decodeRegister0(), decodeRegister1()),
+          2,
+        ),
+      const Byte(0xa4) => (
+          Instruction.rem(decodeRegister0(), decodeRegister1()),
+          2,
+        ),
+      const Byte(0xb0) => (
+          Instruction.and(decodeRegister0(), decodeRegister1()),
+          2,
+        ),
+      const Byte(0xb1) => (
+          Instruction.or(decodeRegister0(), decodeRegister1()),
+          2,
+        ),
+      const Byte(0xb2) => (
+          Instruction.xor(decodeRegister0(), decodeRegister1()),
+          2,
+        ),
+      const Byte(0xb3) => (Instruction.not(decodeRegister0()), 2),
+      // ignore: pattern_never_matches_value_type
       final opcode => throw StateError('Unknown opcode: ${opcode.format()}'),
     };
     programCounter += Word(programCounterIncrement);
