@@ -36,9 +36,9 @@ class WordWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final binary = _format(2, padLength: Word.bits.value, groupSize: 8);
-    final decimal = _format(10, groupSize: 3);
-    final hex = _format(16, padLength: Word.bits.value ~/ 4, groupSize: 2);
+    final binary = value.formatBinary();
+    final decimal = value.formatDecimal();
+    final hex = value.formatHex();
 
     return Tooltip(
       richMessage: TextSpan(
@@ -54,14 +54,5 @@ class WordWidget extends StatelessWidget {
       textAlign: TextAlign.end,
       child: Text('0x$hex', style: monospaceTextStyle),
     );
-  }
-
-  String _format(int base, {int padLength = 1, required int groupSize}) {
-    final string = value.value.toRadixString(base).padLeft(padLength, '0');
-    return string.characters.reversed
-        .windowed(groupSize, step: groupSize, partialWindows: true)
-        .map((it) => it.join().reversed)
-        .reversed
-        .join('\u{202F}');
   }
 }

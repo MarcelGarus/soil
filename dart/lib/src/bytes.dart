@@ -35,6 +35,8 @@ extension type const Byte._(int value) implements Object {
   factory Byte.min(Byte a, Byte b) => a < b ? a : b;
   factory Byte.max(Byte a, Byte b) => a > b ? a : b;
 
+  static const bits = Byte(8);
+
   Byte operator &(Byte other) => Byte(value & other.value);
   Byte operator |(Byte other) => Byte(value | other.value);
   Byte operator ^(Byte other) => Byte(value ^ other.value);
@@ -50,6 +52,10 @@ extension type const Byte._(int value) implements Object {
   Word get asWord => Word(value);
 
   String format() => '0x${value.toRadixString(16).padLeft(2)}';
+
+  String formatBinary() => _formatBinary(value, bits.value);
+  String formatDecimal() => _formatDecimal(value);
+  String formatHex() => _formatHex(value, bits.value);
 }
 
 // ignore: avoid-global-state, avoid-unused-parameters
@@ -80,5 +86,57 @@ extension type const Word(int value) implements Object {
 
   Byte get lowestByte => Byte(value & 0xFF);
 
-  String format() => '0x${value.toRadixString(16).padLeft(16, '0')}';
+  String formatBinary() => _formatBinary(value, bits.value);
+  String formatDecimal() => _formatDecimal(value);
+  String formatHex() => _formatHex(value, bits.value);
+}
+
+// These stringifications support grouping digits and, unlike the built-in
+// formatters from Dart, treat values as unsigned numbers.
+String _formatBinary(int value, int bits) {
+  final buffer = StringBuffer();
+  for (var i = bits - 1; i >= 0; i--) {
+    buffer.write((value & (1 << i)) == 0 ? '0' : '1');
+    if (i % 8 == 0) buffer.write('\u{202F}');
+  }
+  return buffer.toString();
+}
+
+String _formatDecimal(int value) {
+  // TODO(JonasWanke): format as unsigned
+  final string = value.toString();
+  final buffer = StringBuffer();
+  for (var i = 0; i < string.length; i++) {
+    buffer.write(string[i]);
+    if ((string.length - i - 1) % 3 == 0) buffer.write('\u{202F}');
+  }
+  return buffer.toString();
+}
+
+String _formatHex(int value, int bits) {
+  final buffer = StringBuffer();
+  for (var i = 0; i < bits ~/ 4; i++) {
+    final part = switch (value >> (bits - (i + 1) * 4) & 0xF) {
+      0x0 => '0',
+      0x1 => '1',
+      0x2 => '2',
+      0x3 => '3',
+      0x4 => '4',
+      0x5 => '5',
+      0x6 => '6',
+      0x7 => '7',
+      0x8 => '8',
+      0x9 => '9',
+      0xA => 'A',
+      0xB => 'B',
+      0xC => 'C',
+      0xD => 'D',
+      0xE => 'E',
+      0xF => 'F',
+      _ => throw StateError('Invalid hex digit'),
+    };
+    buffer.write(part);
+    if (i.isOdd) buffer.write('\u{202F}');
+  }
+  return buffer.toString();
 }

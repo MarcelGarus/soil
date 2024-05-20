@@ -230,7 +230,8 @@ class VM {
       const Byte(0xb3) => Result.ok((Instruction.not(decodeRegister0()), 2)),
       // ignore: pattern_never_matches_value_type
       final opcode => Result.err(
-          'Unknown opcode at ${programCounter.format()}: ${opcode.format()}',
+          'Unknown opcode at 0x${programCounter.formatHex()}: '
+          '${opcode.format()}',
         ),
     };
     if (decodeResult.isErr()) {
