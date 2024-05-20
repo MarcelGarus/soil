@@ -7,12 +7,22 @@ environment:
   sdk: ^3.4.0
 
 dependencies:
+  file_picker: ^8.0.3
   flutter:
     sdk: flutter
+  soil_vm:
+    path: ../dart
   supernova_flutter:
     git:
       url: https://github.com/JonasWanke/supernova.git
       path: supernova_flutter
+      ref: c568672838f2982d0b04562f33b42f6bafa85f70
+
+dependency_overrides:
+  supernova:
+    git:
+      url: https://github.com/JonasWanke/supernova.git
+      path: supernova
       ref: c568672838f2982d0b04562f33b42f6bafa85f70
 
 flutter:
