@@ -17,7 +17,9 @@ enum Syscall {
   argc,
   arg,
   readInput,
-  execute;
+  execute,
+  uiDimensions,
+  uiRender;
 
   const Syscall();
   factory Syscall.fromByte(Byte byte) => values[byte.value];
@@ -25,18 +27,39 @@ enum Syscall {
 
 abstract interface class Syscalls {
   const Syscalls();
+
   void exit(Word status);
+
   void print(String message);
   void log(String message);
+
   Word? create(String fileName, Word mode);
   Word? openReading(String fileName, Word flags, Word mode);
   Word? openWriting(String fileName, Word flags, Word mode);
   Word read(Word fileDescriptor, Bytes buffer);
   Word write(Word fileDescriptor, Bytes buffer);
   bool close(Word fileDescriptor);
+
   Word argc();
   Word arg(Word argIndex, Bytes buffer);
+
   Word readInput(Bytes buffer);
+
+  UiSize uiDimensions();
+  void uiRender(Bytes buffer, UiSize size);
+}
+
+// ignore: avoid-global-state
+extension type UiSize._(({Word width, Word height}) _value) implements Object {
+  const UiSize(Word width, Word height)
+      : _value = (width: width, height: height);
+
+  static const zero = UiSize(Word(0), Word(0));
+
+  Word get width => _value.width;
+  Word get height => _value.height;
+
+  Word get area => width * height;
 }
 
 class DefaultSyscalls implements Syscalls {
@@ -148,5 +171,22 @@ class DefaultSyscalls implements Syscalls {
       buffer[i] = Byte(byte);
     }
     return i;
+  }
+
+  @override
+  UiSize uiDimensions() {
+    logger.warning(
+      'Syscall `ui_dimensions` was called, but `DefaultSyscalls` does not '
+      'support a UI.',
+    );
+    return UiSize.zero;
+  }
+
+  @override
+  void uiRender(Bytes buffer, UiSize size) {
+    logger.warning(
+      'Syscall `ui_render` was called, but `DefaultSyscalls` does not '
+      'support a UI.',
+    );
   }
 }

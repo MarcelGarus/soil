@@ -239,6 +239,17 @@ class VM {
         registers.reset(memorySize);
         programCounter = const Word(0);
         callStack.clear();
+      case Syscall.uiDimensions:
+        final size = syscalls.uiDimensions();
+        registers.a = size.width;
+        registers.b = size.height;
+      case Syscall.uiRender:
+        final offset = registers.a;
+        final size = UiSize(registers.b, registers.c);
+        syscalls.uiRender(
+          memory.data.getRange(offset, offset + size.area * const Word(3)),
+          size,
+        );
     }
   }
 }
