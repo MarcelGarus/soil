@@ -14,7 +14,7 @@ moveib f 255 | white
 .clear:
 cmp d c isequal cjump .done
 storeb d f
-add d 1 jump .clear
+add d e jump .clear
 .done:
 
 | calculate the center
