@@ -237,7 +237,10 @@ void run_single(void) {
     case 0xa0: REG1 += REG2; ip += 2; break; // add
     case 0xa1: REG1 -= REG2; ip += 2; break; // sub
     case 0xa2: REG1 *= REG2; ip += 2; break; // mul
-    case 0xa3: REG1 /= REG2; ip += 2; break; // div
+    case 0xa3: {                             // div
+      if (REG2 == 0) dump_and_panic("division by zero");
+      REG1 /= REG2; ip += 2; break;
+    }
     case 0xa4: REG1 %= REG2; ip += 2; break; // rem
     case 0xb0: REG1 &= REG2; ip += 2; break; // and
     case 0xb1: REG1 |= REG2; ip += 2; break; // or
