@@ -20,7 +20,7 @@ format ELF64 executable
 
 segment readable executable
 
-memory_size = 100000000
+memory_size = 1000000000
 
 jmp main
 

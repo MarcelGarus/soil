@@ -5,7 +5,7 @@
 #include <stdarg.h>
 #include <unistd.h>
 
-#define MEMORY_SIZE 0x1000000
+#define MEMORY_SIZE 1000000000
 #define TRACE_INSTRUCTIONS 0
 #define TRACE_CALLS 0
 #define TRACE_SYSCALLS 0
