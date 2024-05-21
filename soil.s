@@ -1199,7 +1199,7 @@ syscalls:
   mov rax, 2            ; open syscall
   lea rdi, [r10 + rbp]  ; filename
   mov rsi, 1101o        ; flags: RDWR | CREAT | TRUNC
-  mov rdx, 0            ; mode: ignored anyways because we don't create a file
+  mov rdx, 664o         ; rw-rw-r--
   syscall
   mov r10, rax
   pop_syscall_clobbers
