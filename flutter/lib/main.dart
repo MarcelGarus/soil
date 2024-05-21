@@ -1,8 +1,13 @@
-import 'dart:ui' as ui;
-
 import 'package:file_picker/file_picker.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:soil_vm/soil_vm.dart';
 import 'package:supernova_flutter/supernova_flutter.dart' hide Bytes;
+
+import 'vm_state.dart';
+import 'widgets/registers.dart';
+import 'widgets/toolbar.dart';
+
+final monospaceTextStyle = GoogleFonts.firaCode();
 
 Future<void> main() async {
   await initSupernova(shouldInitializeTimeMachine: false);
@@ -26,9 +31,10 @@ class VMPage extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
+    final state = useState<VMState?>(null);
+
     final file = useState<PlatformFile?>(null);
     final error = useState<String?>(null);
-    final binary = useState<SoilBinary?>(null);
 
     void handleFileSelected(PlatformFile selectedFile) {
       file.value = selectedFile;
@@ -38,7 +44,7 @@ class VMPage extends HookWidget {
         error.value = binaryResult.unwrapErr();
         return;
       }
-      binary.value = binaryResult.unwrap();
+      state.value = VMState(binaryResult.unwrap());
       error.value = null;
     }
 
@@ -59,9 +65,9 @@ class VMPage extends HookWidget {
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
             ],
-            if (binary.value != null) ...[
+            if (state.value != null) ...[
               const SizedBox(height: 16),
-              Expanded(child: _VMWidget(binary.value!)),
+              Expanded(child: _VMWidget(state.value!)),
             ],
           ],
         ),
@@ -111,42 +117,58 @@ class _FileSelection extends HookWidget {
 }
 
 class _VMWidget extends HookWidget {
-  const _VMWidget(this.binary);
+  const _VMWidget(this.state);
 
-  final SoilBinary binary;
+  final VMState state;
 
   @override
   Widget build(BuildContext context) {
-    final syscalls = useMemoized(FlutterSyscalls.new, []);
-    final vm = useMemoized(() => VM(binary, syscalls), [binary]);
-    final vmStatus = useState(vm.status);
-    useEffect(
-      () {
-        var continueRunning = true;
-        Future(() async {
-          while (continueRunning && vm.status.isRunning) {
-            vm.runInstructions(100);
-            vmStatus.value = vm.status;
+    useListenable(state);
 
-            await Future<void>.delayed(const Duration(milliseconds: 17));
-          }
-        });
-        return () => continueRunning = false;
+    final statusWidget = state.vm.status.when(
+      running: () {
+        final status = state.isRunning ? 'Running' : 'Paused';
+        final instruction = state.vm
+            .decodeNextInstruction()
+            .map<InlineSpan>(InstructionSpan.new)
+            .unwrapOrElse((it) => TextSpan(text: it));
+        return Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(text: '$status at '),
+              WordSpan(state.vm.programCounter),
+              const TextSpan(text: ': '),
+              instruction,
+            ],
+          ),
+        );
       },
-      [vm],
+      exited: (exitCode) => Text('Exited with code $exitCode'),
+      panicked: () => const Text('Panicked'),
+      error: (error) => Text('Error: $error'),
     );
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('VM Status: ${vmStatus.value}'),
+        Row(
+          children: [
+            Toolbar(state),
+            const SizedBox(width: 16),
+            Expanded(child: statusWidget),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: RegistersWidget(state.vm),
+        ),
         const SizedBox(height: 16),
         Expanded(
           child: DecoratedBox(
             decoration: const BoxDecoration(
               border: Border.fromBorderSide(BorderSide()),
             ),
-            child: CustomPaint(painter: syscalls.canvas),
+            child: CustomPaint(painter: state.syscalls.canvas),
           ),
         ),
       ],
@@ -154,75 +176,41 @@ class _VMWidget extends HookWidget {
   }
 }
 
-class FlutterSyscalls extends DefaultSyscalls {
-  FlutterSyscalls() : super(arguments: []);
-
-  final canvas = VMCanvas();
-
-  @override
-  UiSize uiDimensions() => canvas.uiDimensions();
-  @override
-  void uiRender(Bytes buffer, UiSize size) =>
-      unawaited(canvas.uiRender(buffer, size));
+class InstructionSpan extends WidgetSpan {
+  InstructionSpan(Instruction instruction)
+      : super(
+          alignment: PlaceholderAlignment.baseline,
+          baseline: TextBaseline.alphabetic,
+          child: InstructionWidget(instruction),
+        );
 }
 
-class VMCanvas extends CustomPainter {
-  VMCanvas() : this._(ChangeNotifier());
-  VMCanvas._(this._notifier) : super(repaint: _notifier);
+class InstructionWidget extends StatelessWidget {
+  const InstructionWidget(this.instruction, {super.key});
 
-  ChangeNotifier _notifier;
-
-  Size? _lastSize;
-  UiSize uiDimensions() {
-    if (_lastSize == null) return const UiSize.square(Word(100));
-
-    final size = _lastSize! / 10;
-    return UiSize(Word(size.width.toInt()), Word(size.height.toInt()));
-  }
-
-  final _paint = Paint();
-  ui.Image? _renderedImage;
-  Future<void> uiRender(Bytes buffer, UiSize size) async {
-    if (size.width == const Word(0) || size.height == const Word(0)) return;
-
-    final convertedBuffer = Uint8List(size.area.value * 4);
-    for (var i = 0; i < size.area.value; i++) {
-      convertedBuffer[4 * i] = buffer[Word(3 * i)].value;
-      convertedBuffer[4 * i + 1] = buffer[Word(3 * i + 1)].value;
-      convertedBuffer[4 * i + 2] = buffer[Word(3 * i + 2)].value;
-      convertedBuffer[4 * i + 3] = 255;
-    }
-
-    // ignore: discarded_futures
-    final descriptor = ui.ImageDescriptor.raw(
-      await ui.ImmutableBuffer.fromUint8List(convertedBuffer),
-      width: size.width.value,
-      height: size.height.value,
-      pixelFormat: ui.PixelFormat.rgba8888,
-    );
-    final codec = await descriptor.instantiateCodec();
-    final frameInfo = await codec.getNextFrame();
-    _renderedImage = frameInfo.image;
-    // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
-    _notifier.notifyListeners();
-  }
+  final Instruction instruction;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    _lastSize = size;
+  Widget build(BuildContext context) {
+    final binary = instruction.toString(base: Base.binary);
+    final decimal = instruction.toString(base: Base.decimal);
+    final hex = instruction.toString();
 
-    if (_renderedImage == null) return;
-
-    canvas.save();
-    canvas.scale(
-      size.width / _renderedImage!.width,
-      size.height / _renderedImage!.height,
+    return Tooltip(
+      richMessage: TextSpan(
+        children: [
+          const TextSpan(text: 'Binary: '),
+          TextSpan(text: binary, style: monospaceTextStyle),
+          const TextSpan(text: '\nDecimal: '),
+          TextSpan(text: decimal, style: monospaceTextStyle),
+          const TextSpan(text: '\nHex: '),
+          TextSpan(text: hex, style: monospaceTextStyle),
+        ],
+      ),
+      child: Text(
+        instruction.toString(),
+        style: monospaceTextStyle,
+      ),
     );
-    canvas.drawImage(_renderedImage!, Offset.zero, _paint);
-    canvas.restore();
   }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) =>
-      this != oldDelegate;
 }

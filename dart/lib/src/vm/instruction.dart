@@ -1,4 +1,4 @@
-import 'package:supernova/supernova.dart';
+import 'package:supernova/supernova.dart' hide Bytes;
 
 import '../bytes.dart';
 
@@ -44,25 +44,142 @@ class Instruction with _$Instruction {
   const factory Instruction.not(Register to) = NotInstruction;
   const Instruction._();
 
+  static Result<Instruction, String> decode(Bytes byteCode, Word offset) {
+    Register decodeRegister0() {
+      final registerIndex = byteCode[offset + const Word(1)].value & 0x07;
+      return Register.values[registerIndex];
+    }
+
+    Register decodeRegister1() {
+      final registerIndex =
+          (byteCode[offset + const Word(1)].value >> 4) & 0x07;
+      return Register.values[registerIndex];
+    }
+
+    return switch (byteCode[offset]) {
+      const Byte(0x00) => const Result.ok(Instruction.nop()),
+      const Byte(0xe0) => const Result.ok(Instruction.panic()),
+      const Byte(0xd0) =>
+        Result.ok(Instruction.move(decodeRegister0(), decodeRegister1())),
+      const Byte(0xd1) => Result.ok(
+          Instruction.movei(
+            decodeRegister0(),
+            byteCode.getWord(offset + const Word(2)),
+          ),
+        ),
+      const Byte(0xd2) => Result.ok(
+          Instruction.moveib(
+            decodeRegister0(),
+            byteCode[offset + const Word(2)],
+          ),
+        ),
+      const Byte(0xd3) =>
+        Result.ok(Instruction.load(decodeRegister0(), decodeRegister1())),
+      const Byte(0xd4) =>
+        Result.ok(Instruction.loadb(decodeRegister0(), decodeRegister1())),
+      const Byte(0xd5) =>
+        Result.ok(Instruction.store(decodeRegister0(), decodeRegister1())),
+      const Byte(0xd6) =>
+        Result.ok(Instruction.storeb(decodeRegister0(), decodeRegister1())),
+      const Byte(0xd7) => Result.ok(Instruction.push(decodeRegister0())),
+      const Byte(0xd8) => Result.ok(Instruction.pop(decodeRegister0())),
+      const Byte(0xf0) =>
+        Result.ok(Instruction.jump(byteCode.getWord(offset + const Word(1)))),
+      const Byte(0xf1) =>
+        Result.ok(Instruction.cjump(byteCode.getWord(offset + const Word(1)))),
+      const Byte(0xf2) =>
+        Result.ok(Instruction.call(byteCode.getWord(offset + const Word(1)))),
+      const Byte(0xf3) => const Result.ok(Instruction.ret()),
+      const Byte(0xf4) =>
+        Result.ok(Instruction.syscall(byteCode[offset + const Word(1)])),
+      const Byte(0xc0) =>
+        Result.ok(Instruction.cmp(decodeRegister0(), decodeRegister1())),
+      const Byte(0xc1) => const Result.ok(Instruction.isequal()),
+      const Byte(0xc2) => const Result.ok(Instruction.isless()),
+      const Byte(0xc3) => const Result.ok(Instruction.isgreater()),
+      const Byte(0xc4) => const Result.ok(Instruction.islessequal()),
+      const Byte(0xc5) => const Result.ok(Instruction.isgreaterequal()),
+      const Byte(0xa0) =>
+        Result.ok(Instruction.add(decodeRegister0(), decodeRegister1())),
+      const Byte(0xa1) =>
+        Result.ok(Instruction.sub(decodeRegister0(), decodeRegister1())),
+      const Byte(0xa2) =>
+        Result.ok(Instruction.mul(decodeRegister0(), decodeRegister1())),
+      const Byte(0xa3) =>
+        Result.ok(Instruction.div(decodeRegister0(), decodeRegister1())),
+      const Byte(0xa4) =>
+        Result.ok(Instruction.rem(decodeRegister0(), decodeRegister1())),
+      const Byte(0xb0) =>
+        Result.ok(Instruction.and(decodeRegister0(), decodeRegister1())),
+      const Byte(0xb1) =>
+        Result.ok(Instruction.or(decodeRegister0(), decodeRegister1())),
+      const Byte(0xb2) =>
+        Result.ok(Instruction.xor(decodeRegister0(), decodeRegister1())),
+      const Byte(0xb3) => Result.ok(Instruction.not(decodeRegister0())),
+      // ignore: pattern_never_matches_value_type
+      final opcode =>
+        Result.err('Unknown opcode at ${offset.format()}: ${opcode.format()}'),
+    };
+  }
+
+  Byte get lengthInBytes {
+    return map(
+      nop: (_) => const Byte(1),
+      panic: (_) => const Byte(1),
+      move: (_) => const Byte(2),
+      movei: (_) => const Byte(10),
+      moveib: (_) => const Byte(3),
+      load: (_) => const Byte(2),
+      loadb: (_) => const Byte(2),
+      store: (_) => const Byte(2),
+      storeb: (_) => const Byte(2),
+      push: (_) => const Byte(2),
+      pop: (_) => const Byte(2),
+      jump: (_) => const Byte(9),
+      cjump: (_) => const Byte(9),
+      call: (_) => const Byte(9),
+      ret: (_) => const Byte(1),
+      syscall: (_) => const Byte(2),
+      cmp: (_) => const Byte(2),
+      isequal: (_) => const Byte(1),
+      isless: (_) => const Byte(1),
+      isgreater: (_) => const Byte(1),
+      islessequal: (_) => const Byte(1),
+      isgreaterequal: (_) => const Byte(1),
+      add: (_) => const Byte(2),
+      sub: (_) => const Byte(2),
+      mul: (_) => const Byte(2),
+      div: (_) => const Byte(2),
+      rem: (_) => const Byte(2),
+      and: (_) => const Byte(2),
+      or: (_) => const Byte(2),
+      xor: (_) => const Byte(2),
+      not: (_) => const Byte(2),
+    );
+  }
+
   @override
-  String toString() {
+  String toString({Base base = Base.hex}) {
     return when(
       nop: () => 'nop',
       panic: () => 'panic',
       move: (to, from) => 'move $to $from',
-      movei: (to, value) => 'movei $to $value',
-      moveib: (to, value) => 'moveib $to $value',
+      movei: (to, value) =>
+          'movei $to ${value.format(base: base, shouldPad: false)}',
+      moveib: (to, value) =>
+          'moveib $to ${value.format(base: base, shouldPad: false)}',
       load: (to, from) => 'load $to $from',
       loadb: (to, from) => 'loadb $to $from',
       store: (to, from) => 'store $to $from',
       storeb: (to, from) => 'storeb $to $from',
       push: (reg) => 'push $reg',
       pop: (reg) => 'pop $reg',
-      jump: (to) => 'jump $to',
-      cjump: (to) => 'cjump $to',
-      call: (target) => 'call $target',
+      jump: (to) => 'jump ${to.format(base: base, shouldPad: false)}',
+      cjump: (to) => 'cjump ${to.format(base: base, shouldPad: false)}',
+      call: (target) => 'call ${target.format(base: base, shouldPad: false)}',
       ret: () => 'ret',
-      syscall: (number) => 'syscall $number',
+      syscall: (number) =>
+          'syscall ${number.format(base: base, shouldPad: false)}',
       cmp: (left, right) => 'cmp $left $right',
       isequal: () => 'isequal',
       isless: () => 'isless',
@@ -103,6 +220,19 @@ enum Register {
       Register.d => 'd',
       Register.e => 'e',
       Register.f => 'f',
+    };
+  }
+
+  String toFullString() {
+    return switch (this) {
+      Register.stackPointer => 'stack pointer',
+      Register.status => 'status register',
+      Register.a => 'general-purpose register a',
+      Register.b => 'general-purpose register b',
+      Register.c => 'general-purpose register c',
+      Register.d => 'general-purpose register d',
+      Register.e => 'general-purpose register e',
+      Register.f => 'general-purpose register f',
     };
   }
 }
