@@ -1128,8 +1128,8 @@ syscalls:
   panic str_unknown_syscall, str_unknown_syscall.len
 
 .exit:
-  mov rax, 60 ; exit syscall
-  mov dl, [rbp + r10] ; status code (from the a register)
+  mov rax, 60   ; exit syscall
+  mov dil, r10b ; status code (from the a register)
   syscall
 
 .print:
