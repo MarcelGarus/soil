@@ -8,6 +8,7 @@
 #define MEMORY_SIZE 1000000000
 #define TRACE_INSTRUCTIONS 0
 #define TRACE_CALLS 0
+#define TRACE_CALL_ARGS 0
 #define TRACE_SYSCALLS 0
 
 void eprintf(const char* fmt, ...) {
@@ -210,10 +211,12 @@ void run_single(void) {
           eprintf(" ");
         LabelAndPos lap = find_label(*(Word*)(byte_code + ip + 1));
         for (int i = 0; i < lap.len; i++) eprintf("%c", lap.label[i]);
-        for (int i = call_stack_len + lap.len; i < 50; i++) eprintf(" ");
-        for (int i = SP; i < MEMORY_SIZE && i < SP + 40; i++) {
-          if (i % 8 == 0) eprintf(" |");
-          eprintf(" %02x", mem[i]);
+        if (TRACE_CALL_ARGS) {
+          for (int i = call_stack_len + lap.len; i < 50; i++) eprintf(" ");
+          for (int i = SP; i < MEMORY_SIZE && i < SP + 40; i++) {
+            if (i % 8 == 0) eprintf(" |");
+            eprintf(" %02x", mem[i]);
+          }
         }
         eprintf("\n");
       }
@@ -238,10 +241,13 @@ void run_single(void) {
     case 0xa1: REG1 -= REG2; ip += 2; break; // sub
     case 0xa2: REG1 *= REG2; ip += 2; break; // mul
     case 0xa3: {                             // div
-      if (REG2 == 0) dump_and_panic("division by zero");
+      if (REG2 == 0) dump_and_panic("div by zero");
       REG1 /= REG2; ip += 2; break;
     }
-    case 0xa4: REG1 %= REG2; ip += 2; break; // rem
+    case 0xa4: { // rem
+      if (REG2 == 0) dump_and_panic("rem by zero");
+      REG1 %= REG2; ip += 2; break;
+    }
     case 0xb0: REG1 &= REG2; ip += 2; break; // and
     case 0xb1: REG1 |= REG2; ip += 2; break; // or
     case 0xb2: REG1 ^= REG2; ip += 2; break; // xor
