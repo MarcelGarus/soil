@@ -18,7 +18,12 @@ Future<void> main(List<String> arguments) async {
   logger.info('Parsed Soil binary: $soilBinary');
 
   final vm = VM(soilBinary, DefaultSyscalls(arguments: []));
+
+  final stopwatch = Stopwatch()..start();
   final result = vm.runForever();
+  stopwatch.stop();
+  logger.debug('Execution took ${stopwatch.elapsed}.');
+
   result.when(
     exited: (exitCode) {
       logger.info('VM exited with code $exitCode');
