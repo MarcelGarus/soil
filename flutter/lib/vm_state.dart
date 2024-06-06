@@ -44,7 +44,7 @@ class VMState with ChangeNotifier {
       notifyListeners();
 
       // Give the UI some time to update
-      await Future<void>.delayed(const Duration(milliseconds: 17));
+      await Future<void>.delayed(Duration.zero);
     }
     _stopwatch.stop();
     _isRunning = false;
