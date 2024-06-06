@@ -17,10 +17,14 @@ class VMState with ChangeNotifier {
   var _isRunning = false;
   bool get isRunning => _isRunning;
 
+  final _stopwatch = Stopwatch();
+  Duration get elapsedTime => _stopwatch.elapsed;
+
   void play() {
     if (isRunning || !vm.status.isRunning) return;
 
     _isRunning = true;
+    _stopwatch.start();
     unawaited(_run());
     notifyListeners();
   }
@@ -28,6 +32,7 @@ class VMState with ChangeNotifier {
   void pause() {
     if (!isRunning) return;
 
+    _stopwatch.stop();
     _isRunning = false;
     notifyListeners();
   }
@@ -41,6 +46,7 @@ class VMState with ChangeNotifier {
       // Give the UI some time to update
       await Future<void>.delayed(const Duration(milliseconds: 17));
     }
+    _stopwatch.stop();
     _isRunning = false;
     notifyListeners();
   }
@@ -48,7 +54,9 @@ class VMState with ChangeNotifier {
   void step() {
     assert(!isRunning);
     assert(vm.status.isRunning);
+    _stopwatch.start();
     vm.runInstruction();
+    _stopwatch.stop();
     notifyListeners();
   }
 
@@ -56,6 +64,8 @@ class VMState with ChangeNotifier {
     _syscalls = FlutterSyscalls();
     _vm = VM(_binary, syscalls);
     _isRunning = false;
+    _stopwatch.stop();
+    _stopwatch.reset();
     notifyListeners();
   }
 }

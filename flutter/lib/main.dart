@@ -158,6 +158,8 @@ class _VMWidget extends HookWidget {
           ],
         ),
         const SizedBox(height: 16),
+        Text('Elapsed time: ${state.elapsedTime}'),
+        const SizedBox(height: 16),
         Align(
           alignment: Alignment.centerLeft,
           child: RegistersWidget(state.vm),
