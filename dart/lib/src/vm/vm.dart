@@ -72,58 +72,78 @@ class VM {
       Instruction.decode(binary.byteCode, programCounter);
 
   void _execute(Instruction instruction) {
-    instruction.when(
-      nop: () {},
-      panic: () => _status = const VMStatus.panicked(),
-      move: (to, from) => registers[to] = registers[from],
-      movei: (to, value) => registers[to] = value,
-      moveib: (to, value) => registers[to] = value.asWord,
-      load: (to, from) => registers[to] = memory.data.getWord(registers[from]),
-      loadb: (to, from) => registers[to] = memory.data[registers[from]].asWord,
-      store: (to, from) => memory.data.setWord(registers[to], registers[from]),
-      storeb: (to, from) =>
-          memory.data[registers[to]] = registers[from].lowestByte,
-      push: (reg) {
+    switch (instruction) {
+      case NopInstruction():
+        break;
+      case PanicInstruction():
+        _status = const VMStatus.panicked();
+      case MoveInstruction(:final to, :final from):
+        registers[to] = registers[from];
+      case MoveiInstruction(:final to, :final value):
+        registers[to] = value;
+      case MoveibInstruction(:final to, :final value):
+        registers[to] = value.asWord;
+      case LoadInstruction(:final to, :final from):
+        registers[to] = memory.data.getWord(registers[from]);
+      case LoadbInstruction(:final to, :final from):
+        registers[to] = memory.data[registers[from]].asWord;
+      case StoreInstruction(:final to, :final from):
+        memory.data.setWord(registers[to], registers[from]);
+      case StorebInstruction(:final to, :final from):
+        memory.data[registers[to]] = registers[from].lowestByte;
+      case PushInstruction(:final reg):
         registers.stackPointer -= const Word(8);
         memory.data.setWord(registers.stackPointer, registers[reg]);
-      },
-      pop: (reg) {
+      case PopInstruction(:final reg):
         registers[reg] = memory.data.getWord(registers.stackPointer);
         registers.stackPointer += const Word(8);
-      },
-      jump: (to) => programCounter = to,
-      cjump: (to) {
+      case JumpInstruction(:final to):
+        programCounter = to;
+      case CjumpInstruction(:final to):
         if (registers.status.isNotZero) programCounter = to;
-      },
-      call: (target) {
+      case CallInstruction(:final target):
         callStack.add(programCounter);
         programCounter = target;
-      },
-      ret: () => programCounter = callStack.removeLast(),
-      syscall: (number) => runSyscall(SyscallInstruction(number)),
-      cmp: (left, right) =>
-          registers.status = registers[left] - registers[right],
-      isequal: () => registers.status =
-          registers.status.isZero ? const Word(1) : const Word(0),
-      isless: () => registers.status =
-          registers.status < const Word(0) ? const Word(1) : const Word(0),
-      isgreater: () => registers.status =
-          registers.status > const Word(0) ? const Word(1) : const Word(0),
-      islessequal: () => registers.status =
-          registers.status <= const Word(0) ? const Word(1) : const Word(0),
-      isgreaterequal: () => registers.status =
-          registers.status >= const Word(0) ? const Word(1) : const Word(0),
-      add: (to, from) => registers[to] += registers[from],
-      sub: (to, from) => registers[to] -= registers[from],
-      mul: (to, from) => registers[to] *= registers[from],
-      div: (dividend, divisor) => registers[dividend] ~/= registers[divisor],
-      rem: (dividend, divisor) => registers[dividend] =
-          registers[dividend].remainder(registers[divisor]),
-      and: (to, from) => registers[to] &= registers[from],
-      or: (to, from) => registers[to] |= registers[from],
-      xor: (to, from) => registers[to] ^= registers[from],
-      not: (to) => registers[to] = ~registers[to],
-    );
+      case RetInstruction():
+        programCounter = callStack.removeLast();
+      case SyscallInstruction(:final number):
+        runSyscall(SyscallInstruction(number));
+      case CmpInstruction(:final left, :final right):
+        registers.status = registers[left] - registers[right];
+      case IsequalInstruction():
+        registers.status =
+            registers.status.isZero ? const Word(1) : const Word(0);
+      case IslessInstruction():
+        registers.status =
+            registers.status < const Word(0) ? const Word(1) : const Word(0);
+      case IsgreaterInstruction():
+        registers.status =
+            registers.status > const Word(0) ? const Word(1) : const Word(0);
+      case IslessequalInstruction():
+        registers.status =
+            registers.status <= const Word(0) ? const Word(1) : const Word(0);
+      case IsgreaterequalInstruction():
+        registers.status =
+            registers.status >= const Word(0) ? const Word(1) : const Word(0);
+      case AddInstruction(:final to, :final from):
+        registers[to] += registers[from];
+      case SubInstruction(:final to, :final from):
+        registers[to] -= registers[from];
+      case MulInstruction(:final to, :final from):
+        registers[to] *= registers[from];
+      case DivInstruction(:final dividend, :final divisor):
+        registers[dividend] ~/= registers[divisor];
+      case RemInstruction(:final dividend, :final divisor):
+        registers[dividend] = registers[dividend].remainder(registers[divisor]);
+      case AndInstruction(:final to, :final from):
+        registers[to] &= registers[from];
+      case OrInstruction(:final to, :final from):
+        registers[to] |= registers[from];
+      case XorInstruction(:final to, :final from):
+        registers[to] ^= registers[from];
+      case NotInstruction(:final to):
+        registers[to] = ~registers[to];
+    }
   }
 
   void runSyscall(SyscallInstruction instruction) {

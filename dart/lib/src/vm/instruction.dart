@@ -5,7 +5,7 @@ import '../bytes.dart';
 part 'instruction.freezed.dart';
 
 @freezed
-class Instruction with _$Instruction {
+sealed class Instruction with _$Instruction {
   const factory Instruction.nop() = NopInstruction;
   const factory Instruction.panic() = PanicInstruction;
   const factory Instruction.move(Register to, Register from) = MoveInstruction;
