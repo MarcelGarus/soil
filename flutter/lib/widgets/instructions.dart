@@ -6,13 +6,15 @@ import '../main.dart';
 import '../vm_state.dart';
 import 'registers.dart';
 
-class InstructionsWidget extends StatelessWidget {
+class InstructionsWidget extends HookWidget {
   const InstructionsWidget(this.state, {super.key});
 
   final VMState state;
 
   @override
   Widget build(BuildContext context) {
+    useListenable(state);
+
     return TableView.builder(
       columnCount: 3,
       columnBuilder: (index) => TableSpan(
@@ -24,7 +26,13 @@ class InstructionsWidget extends StatelessWidget {
         },
       ),
       rowCount: state.instructions.length,
-      rowBuilder: (index) => const TableSpan(extent: FixedTableSpanExtent(16)),
+      rowBuilder: (index) => TableSpan(
+        extent: const FixedTableSpanExtent(16),
+        backgroundDecoration:
+            state.vm.programCounter == state.instructions[index].$1
+                ? SpanDecoration(color: Colors.yellow.withOpacity(0.5))
+                : null,
+      ),
       cellBuilder: (context, vicinity) {
         final (offset, instruction) = state.instructions[vicinity.row];
         return TableViewCell(
@@ -35,7 +43,7 @@ class InstructionsWidget extends StatelessWidget {
                   instruction.lengthInBytes.value,
                   (it) =>
                       ByteWidget(state.vm.binary.byteCode[offset + Word(it)]),
-                ).withSeparators(const SizedBox(width: 4)).toList(),
+                ).withSeparators(const SizedBox(width: 2)).toList(),
               ),
             2 => InstructionWidget(instruction),
             _ => throw StateError('Invalid column index'),
