@@ -55,7 +55,7 @@ class VMState with ChangeNotifier {
   Future<void> _run() async {
     final vm = this.vm;
     while (isRunning && vm.status.isRunning) {
-      vm.runInstructions(100);
+      vm.runInstructions(10000);
       notifyListeners();
 
       // Give the UI some time to update
