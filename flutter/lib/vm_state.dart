@@ -11,6 +11,21 @@ class VMState with ChangeNotifier {
   FlutterSyscalls get syscalls => _syscalls;
 
   SoilBinary _binary;
+
+  late final instructions = _parseInstructions();
+  List<(Word, Instruction)> _parseInstructions() {
+    if (_binary.byteCode.isEmpty) return [];
+
+    final instructions = <(Word, Instruction)>[];
+    var offset = const Word(0);
+    while (offset < _binary.byteCode.length) {
+      final instruction = Instruction.decode(_binary.byteCode, offset).unwrap();
+      instructions.add((offset, instruction));
+      offset += instruction.lengthInBytes.asWord;
+    }
+    return instructions;
+  }
+
   VM _vm;
   VM get vm => _vm;
 

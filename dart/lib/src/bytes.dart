@@ -16,6 +16,8 @@ extension type Bytes(Uint8List list) implements Object {
   }
 
   Word get length => Word(list.length);
+  bool get isEmpty => list.isEmpty;
+  bool get isNotEmpty => list.isNotEmpty;
 
   Bytes getRange(Word start, [Word? end]) =>
       Bytes(list.sublist(start.value, end?.value));
@@ -51,8 +53,19 @@ extension type const Byte._(int value) implements Object {
 
   Word get asWord => Word(value);
 
-  String format({Base base = Base.hex, bool shouldPad = true}) =>
-      _format(base, value, bits.value, shouldPad: shouldPad);
+  String format({
+    Base base = Base.hex,
+    bool includePrefix = true,
+    bool shouldPad = true,
+  }) {
+    return _format(
+      base,
+      value,
+      bits.value,
+      includePrefix: includePrefix,
+      shouldPad: shouldPad,
+    );
+  }
 }
 
 // ignore: avoid-global-state, avoid-unused-parameters
@@ -83,8 +96,19 @@ extension type const Word(int value) implements Object {
 
   Byte get lowestByte => Byte(value & 0xFF);
 
-  String format({Base base = Base.hex, bool shouldPad = true}) =>
-      _format(base, value, bits.value, shouldPad: shouldPad);
+  String format({
+    Base base = Base.hex,
+    bool includePrefix = true,
+    bool shouldPad = true,
+  }) {
+    return _format(
+      base,
+      value,
+      bits.value,
+      includePrefix: includePrefix,
+      shouldPad: shouldPad,
+    );
+  }
 }
 
 enum Base { binary, decimal, hex }
@@ -95,12 +119,13 @@ String _format(
   Base base,
   int value,
   int bits, {
+  required bool includePrefix,
   required bool shouldPad,
 }) {
   final buffer = StringBuffer();
   switch (base) {
     case Base.binary:
-      buffer.write('0b');
+      if (includePrefix) buffer.write('0b');
       var hadDigits = false;
       for (var i = bits - 1; i >= 0; i--) {
         final bitIsZero = (value & (1 << i)) == 0;
@@ -118,7 +143,7 @@ String _format(
         if ((string.length - i - 1) % 3 == 0) buffer.write('\u{202F}');
       }
     case Base.hex:
-      buffer.write('0x');
+      if (includePrefix) buffer.write('0x');
       var hadDigits = false;
       for (var i = 0; i < bits ~/ 4; i++) {
         final partValue = value >> (bits - (i + 1) * 4) & 0xF;

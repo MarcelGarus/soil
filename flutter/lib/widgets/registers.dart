@@ -34,6 +34,42 @@ class RegistersWidget extends StatelessWidget {
   }
 }
 
+class ByteSpan extends WidgetSpan {
+  ByteSpan(Byte byte)
+      : super(
+          alignment: PlaceholderAlignment.baseline,
+          baseline: TextBaseline.alphabetic,
+          child: ByteWidget(byte),
+        );
+}
+
+class ByteWidget extends StatelessWidget {
+  const ByteWidget(this.byte, {super.key});
+
+  final Byte byte;
+
+  @override
+  Widget build(BuildContext context) {
+    final binary = byte.format(base: Base.binary, includePrefix: false);
+    final decimal = byte.format(base: Base.decimal, includePrefix: false);
+    final hex = byte.format(includePrefix: false);
+
+    return Tooltip(
+      richMessage: TextSpan(
+        children: [
+          const TextSpan(text: 'Binary: '),
+          TextSpan(text: binary, style: monospaceTextStyle),
+          const TextSpan(text: '\nDecimal: '),
+          TextSpan(text: decimal, style: monospaceTextStyle),
+          const TextSpan(text: '\nHex: '),
+          TextSpan(text: hex, style: monospaceTextStyle),
+        ],
+      ),
+      child: Text(hex, style: monospaceTextStyle),
+    );
+  }
+}
+
 class WordSpan extends WidgetSpan {
   WordSpan(Word word)
       : super(
@@ -50,9 +86,9 @@ class WordWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final binary = word.format(base: Base.binary);
-    final decimal = word.format(base: Base.decimal);
-    final hex = word.format();
+    final binary = word.format(base: Base.binary, includePrefix: false);
+    final decimal = word.format(base: Base.decimal, includePrefix: false);
+    final hex = word.format(includePrefix: false);
 
     return Tooltip(
       richMessage: TextSpan(
