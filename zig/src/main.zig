@@ -248,14 +248,14 @@ const Compiler = struct {
                         try machine_code.emit_push(Reg.e);
                         try machine_code.emit_push(Reg.f);
 
-                        // const num_args = signature.params.len;
-                        // if (num_args >= 1) try machine_code.emit_mov_rdi_r8();
-                        // if (num_args >= 2) try machine_code.emit_mov_rsi_r9();
-                        // if (num_args >= 3) try machine_code.emit_mov_rdx_r10();
-                        // if (num_args >= 4) try machine_code.emit_mov_rcx_r11();
-                        // if (num_args >= 5) try machine_code.emit_mov_r8_r12();
+                        const num_args = signature.params.len;
+                        if (num_args >= 1) try machine_code.emit_mov_rdi_r8();
+                        if (num_args >= 2) try machine_code.emit_mov_rsi_r9();
+                        if (num_args >= 3) try machine_code.emit_mov_rdx_r10();
+                        if (num_args >= 4) try machine_code.emit_mov_rcx_r11();
+                        if (num_args >= 5) try machine_code.emit_mov_r8_r12();
 
-                        // try machine_code.emit_call_comptime(@ptrCast(impl));
+                        try machine_code.emit_call_comptime(@intFromPtr(&impl));
 
                         try machine_code.emit_pop(Reg.f);
                         try machine_code.emit_pop(Reg.e);

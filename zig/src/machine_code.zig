@@ -135,10 +135,35 @@ pub fn emit_mov_al_byte(self: *Self, a: Reg) !void { // move al, <a>
     try self.emit_byte(0xb0);
     try self.emit_byte(a.to_byte());
 }
+pub fn emit_mov_r8_r12(self: *Self) !void { // mov r8, 12
+    try self.emit_byte(0x4d);
+    try self.emit_byte(0x89);
+    try self.emit_byte(0xe0);
+}
 pub fn emit_mov_rax_soil(self: *Self, a: Reg) !void { // mov rax, <a>
     try self.emit_byte(0x4c);
     try self.emit_byte(0x89);
     try self.emit_byte(0xc0 + 8 * a.to_byte());
+}
+pub fn emit_mov_rcx_r11(self: *Self) !void { // mov rcx, r11
+    try self.emit_byte(0x4c);
+    try self.emit_byte(0x89);
+    try self.emit_byte(0xd9);
+}
+pub fn emit_mov_rdi_r8(self: *Self) !void { // mov rdi, r8
+    try self.emit_byte(0x4c);
+    try self.emit_byte(0x89);
+    try self.emit_byte(0xc7);
+}
+pub fn emit_mov_rdx_r10(self: *Self) !void { // mov rdx, r10
+    try self.emit_byte(0x4c);
+    try self.emit_byte(0x89);
+    try self.emit_byte(0xd2);
+}
+pub fn emit_mov_rsi_r9(self: *Self) !void { // mov rsi, r9
+    try self.emit_byte(0x4c);
+    try self.emit_byte(0x89);
+    try self.emit_byte(0xce);
 }
 pub fn emit_mov_mem_of_rbp_plus_soil_soil(self: *Self, a: Reg, b: Reg) !void { // mov [rbp + <a>], <b>
     try self.emit_byte(0x4d);
