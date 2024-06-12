@@ -10,6 +10,8 @@
 const std = @import("std");
 const Alloc = std.mem.Allocator;
 const ArrayList = std.ArrayList;
+const MachineCode = @import("machine_code.zig");
+const Reg = @import("reg.zig").Reg;
 
 const memory_size = 1000000000;
 
@@ -113,34 +115,6 @@ const Compiler = struct {
         return labels_to_offset.items;
     }
 
-    const Reg = enum {
-        sp,
-        st,
-        a,
-        b,
-        c,
-        d,
-        e,
-        f,
-
-        fn parse(byte: u8) !Reg {
-            return switch (byte) {
-                0 => Reg.sp,
-                1 => Reg.st,
-                2 => Reg.a,
-                3 => Reg.b,
-                4 => Reg.c,
-                5 => Reg.d,
-                6 => Reg.e,
-                7 => Reg.f,
-                else => return error.UnknownRegister,
-            };
-        }
-
-        fn to_byte(self: Reg) u8 {
-            return @as(u8, @intFromEnum(self));
-        }
-    };
     fn parse_reg(self: *Compiler) !Reg {
         return Reg.parse(try self.eat_byte());
     }
@@ -274,6 +248,15 @@ const Compiler = struct {
                         try machine_code.emit_push(Reg.e);
                         try machine_code.emit_push(Reg.f);
 
+                        // const num_args = signature.params.len;
+                        // if (num_args >= 1) try machine_code.emit_mov_rdi_r8();
+                        // if (num_args >= 2) try machine_code.emit_mov_rsi_r9();
+                        // if (num_args >= 3) try machine_code.emit_mov_rdx_r10();
+                        // if (num_args >= 4) try machine_code.emit_mov_rcx_r11();
+                        // if (num_args >= 5) try machine_code.emit_mov_r8_r12();
+
+                        // try machine_code.emit_call_comptime(@ptrCast(impl));
+
                         try machine_code.emit_pop(Reg.f);
                         try machine_code.emit_pop(Reg.e);
                         try machine_code.emit_pop(Reg.d);
@@ -367,301 +350,6 @@ const Compiler = struct {
             else => return error.UnknownOpcode,
         }
     }
-
-    // Turns out, the encoding of x86_64 instructions is ... interesting.
-    const MachineCode = struct {
-        buffer: []align(std.mem.page_size) u8,
-        len: usize,
-        patches: ArrayList(Patch),
-
-        const Patch = struct {
-            where: usize,
-            target: usize,
-        };
-
-        fn init(alloc: Alloc) !MachineCode {
-            return MachineCode{
-                .buffer = try alloc.allocWithOptions(u8, 100000000, std.mem.page_size, null),
-                .len = 0,
-                .patches = ArrayList(Patch).init(alloc),
-            };
-        }
-
-        inline fn reserve(self: *MachineCode, comptime amount: u8) !void {
-            if (self.len + amount > self.buffer.len) return error.OutOfMemory;
-            self.len += amount;
-        }
-        fn emit_byte(self: *MachineCode, value: u8) !void {
-            try self.reserve(1);
-            self.buffer[self.len - 1] = value;
-        }
-        fn emit_int(self: *MachineCode, value: i32) !void {
-            try self.reserve(4);
-            std.mem.writeInt(i32, self.buffer[self.len - 4 .. self.len][0..4], value, .little);
-        }
-        fn emit_word(self: *MachineCode, value: i64) !void {
-            try self.reserve(8);
-            std.mem.writeInt(i64, self.buffer[self.len - 8 .. self.len][0..8], value, .little);
-        }
-
-        fn emit_relative_patch(self: *MachineCode, target: usize) !void {
-            try self.patches.append(.{ .where = self.buffer.len, .target = target });
-            try self.reserve(4);
-        }
-        fn emit_relative_comptime(self: *MachineCode, target: usize) !void {
-            // Relative targets are relative to the end of the instruction (hence, the + 4).
-            const base: i32 = @intCast(@intFromPtr(&self.buffer) + self.len + 4);
-            const target_i32: i32 = @intCast(target);
-            const relative: i32 = target_i32 - base;
-            try self.emit_int(relative);
-        }
-
-        fn emit_add_soil_soil(self: *MachineCode, a: Reg, b: Reg) !void { // add <a>, <b>
-            try self.emit_byte(0x4d);
-            try self.emit_byte(0x01);
-            try self.emit_byte(0xc0 + a.to_byte() + 8 * b.to_byte());
-        }
-        fn emit_add_r8_8(self: *MachineCode) !void { // add r8, 8
-            try self.emit_byte(0x49);
-            try self.emit_byte(0x83);
-            try self.emit_byte(0xc0);
-            try self.emit_byte(0x08);
-        }
-        fn emit_add_rax_rbp(self: *MachineCode) !void { // add rax, rbp
-            try self.emit_byte(0x48);
-            try self.emit_byte(0x89);
-            try self.emit_byte(0xe8);
-        }
-        fn emit_and_soil_0xff(self: *MachineCode, a: Reg) !void { // and <a>, 0xff
-            try self.emit_byte(0x49);
-            try self.emit_byte(0x81);
-            try self.emit_byte(0xe0 + a.to_byte());
-            try self.emit_byte(0xff);
-            try self.emit_byte(0x00);
-            try self.emit_byte(0x00);
-            try self.emit_byte(0x00);
-        }
-        fn emit_and_r9_0xff(self: *MachineCode) !void { // and r9, 0xff
-            try self.emit_byte(0x49);
-            try self.emit_byte(0x81);
-            try self.emit_byte(0xe1);
-            try self.emit_byte(0xff);
-            try self.emit_byte(0x00);
-            try self.emit_byte(0x00);
-            try self.emit_byte(0x00);
-        }
-        fn emit_and_rax_0xff(self: *MachineCode) !void { // and rax, 0xff
-            try self.emit_byte(0x48);
-            try self.emit_byte(0x25);
-            try self.emit_byte(0xff);
-            try self.emit_byte(0x00);
-            try self.emit_byte(0x00);
-            try self.emit_byte(0x00);
-        }
-        fn emit_and_soil_soil(self: *MachineCode, a: Reg, b: Reg) !void { // and <a>, <b>
-            try self.emit_byte(0x4d);
-            try self.emit_byte(0x21);
-            try self.emit_byte(0xc0 + a.to_byte() + 8 * b.to_byte());
-        }
-        fn emit_call(self: *MachineCode, target: usize) !void { // call <target>
-            try self.emit_byte(0xe8);
-            try self.emit_relative_patch(target);
-        }
-        fn emit_call_comptime(self: *MachineCode, target: usize) !void { // call <target>
-            try self.emit_byte(0xe8);
-            try self.emit_relative_comptime(target);
-        }
-        fn emit_idiv_soil(self: *MachineCode, a: Reg) !void { // idiv <a>
-            try self.emit_byte(0x49);
-            try self.emit_byte(0xf7);
-            try self.emit_byte(0xf8 + a.to_byte());
-        }
-        fn emit_imul_soil_soil(self: *MachineCode, a: Reg, b: Reg) !void { // and <a>, <b>
-            try self.emit_byte(0x4d);
-            try self.emit_byte(0x0f);
-            try self.emit_byte(0xaf);
-            try self.emit_byte(0xc0 + b.to_byte() * 8 * a.to_byte());
-        }
-        fn emit_jmp(self: *MachineCode, target: usize) !void { // jmp <target>
-            try self.emit_byte(0xe);
-            try self.emit_relative_patch(target);
-        }
-        fn emit_jmp_to_comptime(self: *MachineCode, target: usize) !void { // jmp <target> // target can't be r12 or rax
-            try self.emit_byte(0xe9);
-            try self.emit_relative_comptime(target);
-        }
-        fn emit_jnz(self: *MachineCode, target: usize) !void { // jnz <target> // target can't be r12 or r13
-            try self.emit_byte(0x0f);
-            try self.emit_byte(0x85);
-            try self.emit_relative_patch(target);
-        }
-        fn emit_mov_al_byte(self: *MachineCode, a: Reg) !void { // move al, <a>
-            try self.emit_byte(0xb0);
-            try self.emit_byte(a.to_byte());
-        }
-        fn emit_mov_rax_soil(self: *MachineCode, a: Reg) !void { // mov rax, <a>
-            try self.emit_byte(0x4c);
-            try self.emit_byte(0x89);
-            try self.emit_byte(0xc0 + 8 * a.to_byte());
-        }
-        fn emit_mov_mem_of_rbp_plus_soil_soil(self: *MachineCode, a: Reg, b: Reg) !void { // mov [rbp + <a>], <b>
-            try self.emit_byte(0x4d);
-            try self.emit_byte(0x89);
-            if (a == .d) { // for <a> = r13, the encoding is different
-                try self.emit_byte(0x44 + 8 * b.to_byte());
-                try self.emit_byte(0x2d);
-                try self.emit_byte(0x00);
-            } else {
-                try self.emit_byte(0x04 + 8 * b.to_byte());
-                try self.emit_byte(0x28 + a.to_byte());
-            }
-        }
-        fn emit_mov_mem_of_rbp_plus_soil_soilb(self: *MachineCode, a: Reg, b: Reg) !void { // mov [rbp + <a>], <b>b
-            try self.emit_byte(0x45);
-            try self.emit_byte(0x88);
-            if (a == .d) { // for <a> = r13, the encoding is different
-                try self.emit_byte(0x44 + 8 * b.to_byte());
-                try self.emit_byte(0x2d);
-                try self.emit_byte(0x00);
-            } else {
-                try self.emit_byte(0x04 + 8 * b.to_byte());
-                try self.emit_byte(0x28 + a.to_byte());
-            }
-        }
-        fn emit_mov_soil_rdx(self: *MachineCode, a: Reg) !void { // mov <a>, rdx
-            try self.emit_byte(0x49);
-            try self.emit_byte(0x89);
-            try self.emit_byte(0xd0 + a.to_byte());
-        }
-        fn emit_mov_soil_rax(self: *MachineCode, a: Reg) !void { // mov <a>, rax
-            try self.emit_byte(0x49);
-            try self.emit_byte(0x89);
-            try self.emit_byte(0xc0 + a.to_byte());
-        }
-        fn emit_mov_soil_mem_of_rbp_plus_soil(self: *MachineCode, a: Reg, b: Reg) !void { // mov <a>, [rbp + <b>]
-            try self.emit_byte(0x4d);
-            try self.emit_byte(0x8b);
-            if (b == .d) { // for <b> = r13, the encoding is different
-                try self.emit_byte(0x44 + 8 * a.to_byte());
-                try self.emit_byte(0x2d);
-                try self.emit_byte(0x00);
-            } else {
-                try self.emit_byte(0x04 + 8 * a.to_byte());
-                try self.emit_byte(@as(u8, 0x28) + b.to_byte());
-            }
-        }
-        fn emit_mov_soilb_mem_of_rbp_plus_soil(self: *MachineCode, a: Reg, b: Reg) !void { // mov <a>b, [rbp + <b>]
-            try self.emit_byte(0x45);
-            try self.emit_byte(0x8a);
-            if (b == .d) { // for <b> = r13, the encoding is different
-                try self.emit_byte(0x44 + 8 * a.to_byte());
-                try self.emit_byte(0x2d);
-                try self.emit_byte(0x00);
-            } else {
-                try self.emit_byte(0x04 + 8 * a.to_byte());
-                try self.emit_byte(0x28 + b.to_byte());
-            }
-        }
-        fn emit_mov_soil_soil(self: *MachineCode, a: Reg, b: Reg) !void { // mov <a>, <b>
-            try self.emit_byte(0x4d);
-            try self.emit_byte(0x89);
-            try self.emit_byte(0xc0 + a.to_byte() + 8 * b.to_byte());
-        }
-        fn emit_mov_soil_word(self: *MachineCode, a: Reg, value: i64) !void { // mov <a>, <value>
-            try self.emit_byte(0x49);
-            try self.emit_byte(0xb8 + a.to_byte());
-            try self.emit_word(value);
-        }
-        fn emit_mov_soilb_byte(self: *MachineCode, a: Reg, value: u8) !void { // mov <a>b, <value>
-            try self.emit_byte(0x41);
-            try self.emit_byte(0xb0 + a.to_byte());
-            try self.emit_byte(value);
-        }
-        fn emit_mov_rax_mem_of_rax(self: *MachineCode) !void { // mov rax, [rax]
-            try self.emit_byte(0x48);
-            try self.emit_byte(0x8b);
-            try self.emit_byte(0x00);
-        }
-        fn emit_nop(self: *MachineCode) !void { // nop
-            try self.emit_byte(0x90);
-        }
-        fn emit_not_r9(self: *MachineCode) !void { // not r9
-            try self.emit_byte(0x49);
-            try self.emit_byte(0xf7);
-            try self.emit_byte(0xd1);
-        }
-        fn emit_not_soil(self: *MachineCode, a: Reg) !void { // not a
-            try self.emit_byte(0x49);
-            try self.emit_byte(0xf7);
-            try self.emit_byte(0xd0 + a.to_byte());
-        }
-        fn emit_or_soil_soil(self: *MachineCode, a: Reg, b: Reg) !void { // or <a>, <b>
-            try self.emit_byte(0x4d);
-            try self.emit_byte(0x09);
-            try self.emit_byte(0xc0 + a.to_byte() + 8 * b.to_byte());
-        }
-        fn emit_push(self: *MachineCode, a: Reg) !void { // push <a>
-            try self.emit_byte(0x41);
-            try self.emit_byte(0x50 + a.to_byte());
-        }
-        fn emit_pop(self: *MachineCode, a: Reg) !void { // pop <a>
-            try self.emit_byte(0x41);
-            try self.emit_byte(0x58 + a.to_byte());
-        }
-        fn emit_ret(self: *MachineCode) !void { // ret
-            try self.emit_byte(0xc3);
-        }
-        fn emit_shr_r9_63(self: *MachineCode) !void { // shr r9, 63
-            try self.emit_byte(0x49);
-            try self.emit_byte(0xc1);
-            try self.emit_byte(0xe9);
-            try self.emit_byte(0x3f);
-        }
-        fn emit_sete_r9b(self: *MachineCode) !void { // sete r9b
-            try self.emit_byte(0x41);
-            try self.emit_byte(0x0f);
-            try self.emit_byte(0x94);
-            try self.emit_byte(0xc1);
-        }
-        fn emit_setg_r9b(self: *MachineCode) !void { // setg r9b
-            try self.emit_byte(0x41);
-            try self.emit_byte(0x0f);
-            try self.emit_byte(0x9f);
-            try self.emit_byte(0xc1);
-        }
-        fn emit_setle_r9b(self: *MachineCode) !void { // setle r9b
-            try self.emit_byte(0x41);
-            try self.emit_byte(0x0f);
-            try self.emit_byte(0x9e);
-            try self.emit_byte(0xc1);
-        }
-        fn emit_sub_soil_soil(self: *MachineCode, a: Reg, b: Reg) !void { // sub <a>, <b>
-            try self.emit_byte(0x4d);
-            try self.emit_byte(0x29);
-            try self.emit_byte(0xc0 + a.to_byte() + 8 * b.to_byte());
-        }
-        fn emit_sub_r8_8(self: *MachineCode) !void { // sub r8, 8
-            try self.emit_byte(0x49);
-            try self.emit_byte(0x83);
-            try self.emit_byte(0xe8);
-            try self.emit_byte(0x08);
-        }
-        fn emit_test_r9_r9(self: *MachineCode) !void { // test r9, r9
-            try self.emit_byte(0x4d);
-            try self.emit_byte(0x85);
-            try self.emit_byte(0xc9);
-        }
-        fn emit_xor_rdx_rdx(self: *MachineCode) !void { // xor rdx, rdx
-            try self.emit_byte(0x48);
-            try self.emit_byte(0x31);
-            try self.emit_byte(0xd2);
-        }
-        fn emit_xor_soil_soil(self: *MachineCode, a: Reg, b: Reg) !void { // xor <a>, <b>
-            try self.emit_byte(0x4d);
-            try self.emit_byte(0x31);
-            try self.emit_byte(0xc0 + a.to_byte() + 8 * b.to_byte());
-        }
-    };
 };
 
 // ; Panic with stack trace
