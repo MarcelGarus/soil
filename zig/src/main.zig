@@ -48,16 +48,22 @@ const Program = struct {
 };
 const LabelAndOffset = struct { label: []u8, offset: usize };
 
-fn compile(alloc: Alloc, binary: []u8) !Program {
+const SyscallTable = [256]fn () void;
+
+fn compile(alloc: Alloc, binary: []u8, syscalls: type) !Program {
     var program = Program{
-        // Allocate one byte more than memory_size so that syscalls that need null-terminated
+        // Allocate one byte more than memory_size so that SyscallTable that need null-terminated
         // strings can temporarily swap out one byte after a string in memory, even if it's at the
         // end of the VM memory.
-        .initial_memory = undefined,
-        .machine_code = undefined,
+        .initial_memory = &[_]u8{},
+        .machine_code = &[_]u8{},
     };
 
-    var compiler = Compiler{ .alloc = alloc, .input = binary, .cursor = 0 };
+    var compiler = Compiler{
+        .alloc = alloc,
+        .input = binary,
+        .cursor = 0,
+    };
     if (try compiler.eat_byte() != 's') return error.MagicBytesMismatch;
     if (try compiler.eat_byte() != 'o') return error.MagicBytesMismatch;
     if (try compiler.eat_byte() != 'i') return error.MagicBytesMismatch;
@@ -67,7 +73,7 @@ fn compile(alloc: Alloc, binary: []u8) !Program {
         const section_type = compiler.eat_byte() catch break;
         const section_len: usize = @intCast(try compiler.eat_word());
         switch (section_type) {
-            0 => program.machine_code = try compiler.compile_byte_code(section_len),
+            0 => program.machine_code = try compiler.compile_byte_code(section_len, syscalls),
             1 => program.initial_memory = try compiler.eat_amount(section_len),
             2 => _ = try compiler.parse_labels(),
             else => compiler.cursor += section_len, // skip section
@@ -107,29 +113,43 @@ const Compiler = struct {
         return labels_to_offset.items;
     }
 
-    const Reg = enum { sp, st, a, b, c, d, e, f };
-    fn parse_to_reg(byte: u8) !Reg {
-        return switch (byte) {
-            0 => Reg.sp,
-            1 => Reg.st,
-            2 => Reg.a,
-            3 => Reg.b,
-            4 => Reg.c,
-            5 => Reg.d,
-            6 => Reg.e,
-            7 => Reg.f,
-            else => return error.UnknownRegister,
-        };
-    }
+    const Reg = enum {
+        sp,
+        st,
+        a,
+        b,
+        c,
+        d,
+        e,
+        f,
+
+        fn parse(byte: u8) !Reg {
+            return switch (byte) {
+                0 => Reg.sp,
+                1 => Reg.st,
+                2 => Reg.a,
+                3 => Reg.b,
+                4 => Reg.c,
+                5 => Reg.d,
+                6 => Reg.e,
+                7 => Reg.f,
+                else => return error.UnknownRegister,
+            };
+        }
+
+        fn to_byte(self: Reg) u8 {
+            return @as(u8, @intFromEnum(self));
+        }
+    };
     fn parse_reg(self: *Compiler) !Reg {
-        return parse_to_reg(try self.eat_byte());
+        return Reg.parse(try self.eat_byte());
     }
     const Regs = struct { a: Reg, b: Reg };
     fn parse_regs(self: *Compiler) !Regs {
         const byte = try self.eat_byte();
-        return .{ .a = try parse_to_reg(byte & 0x0f), .b = try parse_to_reg(byte >> 4) };
+        return .{ .a = try Reg.parse(byte & 0x0f), .b = try Reg.parse(byte >> 4) };
     }
-    fn compile_byte_code(self: *Compiler, len: usize) ![]align(std.mem.page_size) u8 {
+    fn compile_byte_code(self: *Compiler, len: usize, syscalls: type) ![]align(std.mem.page_size) u8 {
         const byte_code_base = self.cursor;
         const end = byte_code_base + len;
 
@@ -140,10 +160,11 @@ const Compiler = struct {
         var machine_to_byte_code = ArrayList(usize).init(self.alloc);
 
         while (self.cursor < end) {
+            std.debug.print("Compiling instruction.\n", .{});
             const byte_code_offset = self.cursor - byte_code_base;
             const machine_code_offset = machine_code.len;
 
-            try self.compile_instruction(&machine_code);
+            try self.compile_instruction(&machine_code, syscalls);
 
             const byte_code_offset_after = self.cursor - byte_code_base;
             const machine_code_offset_after = machine_code.len;
@@ -161,9 +182,9 @@ const Compiler = struct {
             std.mem.writeInt(i32, machine_code.buffer[patch.where..(patch.where + 4)][0..4], relative, .little);
         }
 
-        return machine_code.buffer;
+        return machine_code.buffer[0..machine_code.len];
     }
-    fn compile_instruction(self: *Compiler, machine_code: *MachineCode) !void {
+    fn compile_instruction(self: *Compiler, machine_code: *MachineCode, syscalls: type) !void {
         const opcode = try self.eat_byte();
         switch (opcode) {
             0x00 => {}, // nop
@@ -229,13 +250,46 @@ const Compiler = struct {
                 try machine_code.emit_ret(); // ret
             },
             0xf4 => { // syscall
+                // Syscalls are implemented in Zig.
                 const number = try self.eat_byte();
-                _ = number;
-                // TOOD: implement
+                inline for (0..256) |n| {
+                    if (number == n) {
+                        const decls = @typeInfo(syscalls).Struct.decls;
+                        if (decls.len <= n) {
+                            // TODO: add call to stub
+                            break;
+                        }
+                        const impl = @field(syscalls, decls[n].name);
+                        const signature = @typeInfo(@TypeOf(impl)).Fn;
+                        std.debug.assert(!signature.is_generic);
+                        std.debug.assert(!signature.is_var_args);
+                        std.debug.assert(signature.calling_convention == .C);
+
+                        try machine_code.emit_push(Reg.sp);
+                        try machine_code.emit_push(Reg.st);
+                        try machine_code.emit_push(Reg.a);
+                        try machine_code.emit_push(Reg.b);
+                        try machine_code.emit_push(Reg.c);
+                        try machine_code.emit_push(Reg.d);
+                        try machine_code.emit_push(Reg.e);
+                        try machine_code.emit_push(Reg.f);
+
+                        try machine_code.emit_pop(Reg.f);
+                        try machine_code.emit_pop(Reg.e);
+                        try machine_code.emit_pop(Reg.d);
+                        try machine_code.emit_pop(Reg.c);
+                        try machine_code.emit_pop(Reg.b);
+                        try machine_code.emit_pop(Reg.a);
+                        try machine_code.emit_pop(Reg.st);
+                        try machine_code.emit_pop(Reg.sp);
+                        @compileLog(signature);
+                    }
+                }
+                // TODO: implement
                 // mov r14, 0
                 // eat_byte r14b
                 // emit_mov_al_byte r14b         ; mov al, <syscall-number>
-                // mov r14, [syscalls.table + 8 * r14]
+                // mov r14, [SyscallTable.table + 8 * r14]
                 // emit_call_comptime r14        ; call <syscall>
                 // instruction_end
             },
@@ -365,7 +419,7 @@ const Compiler = struct {
         fn emit_add_soil_soil(self: *MachineCode, a: Reg, b: Reg) !void { // add <a>, <b>
             try self.emit_byte(0x4d);
             try self.emit_byte(0x01);
-            try self.emit_byte(0xc0 + @as(u8, @intFromEnum(a)) + 8 * @as(u8, @intFromEnum(b)));
+            try self.emit_byte(0xc0 + a.to_byte() + 8 * b.to_byte());
         }
         fn emit_add_r8_8(self: *MachineCode) !void { // add r8, 8
             try self.emit_byte(0x49);
@@ -381,7 +435,7 @@ const Compiler = struct {
         fn emit_and_soil_0xff(self: *MachineCode, a: Reg) !void { // and <a>, 0xff
             try self.emit_byte(0x49);
             try self.emit_byte(0x81);
-            try self.emit_byte(0xe0 + @as(u8, @intFromEnum(a)));
+            try self.emit_byte(0xe0 + a.to_byte());
             try self.emit_byte(0xff);
             try self.emit_byte(0x00);
             try self.emit_byte(0x00);
@@ -407,7 +461,7 @@ const Compiler = struct {
         fn emit_and_soil_soil(self: *MachineCode, a: Reg, b: Reg) !void { // and <a>, <b>
             try self.emit_byte(0x4d);
             try self.emit_byte(0x21);
-            try self.emit_byte(0xc0 + @as(u8, @intFromEnum(a)) + 8 * @as(u8, @intFromEnum(b)));
+            try self.emit_byte(0xc0 + a.to_byte() + 8 * b.to_byte());
         }
         fn emit_call(self: *MachineCode, target: usize) !void { // call <target>
             try self.emit_byte(0xe8);
@@ -420,13 +474,13 @@ const Compiler = struct {
         fn emit_idiv_soil(self: *MachineCode, a: Reg) !void { // idiv <a>
             try self.emit_byte(0x49);
             try self.emit_byte(0xf7);
-            try self.emit_byte(0xf8 + @as(u8, @intFromEnum(a)));
+            try self.emit_byte(0xf8 + a.to_byte());
         }
         fn emit_imul_soil_soil(self: *MachineCode, a: Reg, b: Reg) !void { // and <a>, <b>
             try self.emit_byte(0x4d);
             try self.emit_byte(0x0f);
             try self.emit_byte(0xaf);
-            try self.emit_byte(0xc0 + @as(u8, @intFromEnum(b)) * 8 * @as(u8, @intFromEnum(a)));
+            try self.emit_byte(0xc0 + b.to_byte() * 8 * a.to_byte());
         }
         fn emit_jmp(self: *MachineCode, target: usize) !void { // jmp <target>
             try self.emit_byte(0xe);
@@ -443,84 +497,84 @@ const Compiler = struct {
         }
         fn emit_mov_al_byte(self: *MachineCode, a: Reg) !void { // move al, <a>
             try self.emit_byte(0xb0);
-            try self.emit_byte(@as(u8, @intFromEnum(a)));
+            try self.emit_byte(a.to_byte());
         }
         fn emit_mov_rax_soil(self: *MachineCode, a: Reg) !void { // mov rax, <a>
             try self.emit_byte(0x4c);
             try self.emit_byte(0x89);
-            try self.emit_byte(0xc0 + 8 * @as(u8, @intFromEnum(a)));
+            try self.emit_byte(0xc0 + 8 * a.to_byte());
         }
         fn emit_mov_mem_of_rbp_plus_soil_soil(self: *MachineCode, a: Reg, b: Reg) !void { // mov [rbp + <a>], <b>
             try self.emit_byte(0x4d);
             try self.emit_byte(0x89);
             if (a == .d) { // for <a> = r13, the encoding is different
-                try self.emit_byte(0x44 + 8 * @as(u8, @intFromEnum(b)));
+                try self.emit_byte(0x44 + 8 * b.to_byte());
                 try self.emit_byte(0x2d);
                 try self.emit_byte(0x00);
             } else {
-                try self.emit_byte(0x04 + 8 * @as(u8, @intFromEnum(b)));
-                try self.emit_byte(0x28 + @as(u8, @intFromEnum(a)));
+                try self.emit_byte(0x04 + 8 * b.to_byte());
+                try self.emit_byte(0x28 + a.to_byte());
             }
         }
         fn emit_mov_mem_of_rbp_plus_soil_soilb(self: *MachineCode, a: Reg, b: Reg) !void { // mov [rbp + <a>], <b>b
             try self.emit_byte(0x45);
             try self.emit_byte(0x88);
             if (a == .d) { // for <a> = r13, the encoding is different
-                try self.emit_byte(0x44 + 8 * @as(u8, @intFromEnum(b)));
+                try self.emit_byte(0x44 + 8 * b.to_byte());
                 try self.emit_byte(0x2d);
                 try self.emit_byte(0x00);
             } else {
-                try self.emit_byte(0x04 + 8 * @as(u8, @intFromEnum(b)));
-                try self.emit_byte(0x28 + @as(u8, @intFromEnum(a)));
+                try self.emit_byte(0x04 + 8 * b.to_byte());
+                try self.emit_byte(0x28 + a.to_byte());
             }
         }
         fn emit_mov_soil_rdx(self: *MachineCode, a: Reg) !void { // mov <a>, rdx
             try self.emit_byte(0x49);
             try self.emit_byte(0x89);
-            try self.emit_byte(0xd0 + @as(u8, @intFromEnum(a)));
+            try self.emit_byte(0xd0 + a.to_byte());
         }
         fn emit_mov_soil_rax(self: *MachineCode, a: Reg) !void { // mov <a>, rax
             try self.emit_byte(0x49);
             try self.emit_byte(0x89);
-            try self.emit_byte(0xc0 + @as(u8, @intFromEnum(a)));
+            try self.emit_byte(0xc0 + a.to_byte());
         }
         fn emit_mov_soil_mem_of_rbp_plus_soil(self: *MachineCode, a: Reg, b: Reg) !void { // mov <a>, [rbp + <b>]
             try self.emit_byte(0x4d);
             try self.emit_byte(0x8b);
             if (b == .d) { // for <b> = r13, the encoding is different
-                try self.emit_byte(0x44 + 8 * @as(u8, @intFromEnum(a)));
+                try self.emit_byte(0x44 + 8 * a.to_byte());
                 try self.emit_byte(0x2d);
                 try self.emit_byte(0x00);
             } else {
-                try self.emit_byte(0x04 + 8 * @as(u8, @intFromEnum(a)));
-                try self.emit_byte(@as(u8, 0x28) + @as(u8, @intFromEnum(b)));
+                try self.emit_byte(0x04 + 8 * a.to_byte());
+                try self.emit_byte(@as(u8, 0x28) + b.to_byte());
             }
         }
         fn emit_mov_soilb_mem_of_rbp_plus_soil(self: *MachineCode, a: Reg, b: Reg) !void { // mov <a>b, [rbp + <b>]
             try self.emit_byte(0x45);
             try self.emit_byte(0x8a);
             if (b == .d) { // for <b> = r13, the encoding is different
-                try self.emit_byte(0x44 + 8 * @as(u8, @intFromEnum(a)));
+                try self.emit_byte(0x44 + 8 * a.to_byte());
                 try self.emit_byte(0x2d);
                 try self.emit_byte(0x00);
             } else {
-                try self.emit_byte(0x04 + 8 * @as(u8, @intFromEnum(a)));
-                try self.emit_byte(0x28 + @as(u8, @intFromEnum(b)));
+                try self.emit_byte(0x04 + 8 * a.to_byte());
+                try self.emit_byte(0x28 + b.to_byte());
             }
         }
         fn emit_mov_soil_soil(self: *MachineCode, a: Reg, b: Reg) !void { // mov <a>, <b>
             try self.emit_byte(0x4d);
             try self.emit_byte(0x89);
-            try self.emit_byte(0xc0 + @as(u8, @intFromEnum(a)) + 8 * @as(u8, @intFromEnum(b)));
+            try self.emit_byte(0xc0 + a.to_byte() + 8 * b.to_byte());
         }
         fn emit_mov_soil_word(self: *MachineCode, a: Reg, value: i64) !void { // mov <a>, <value>
             try self.emit_byte(0x49);
-            try self.emit_byte(0xb8 + @as(u8, @intFromEnum(a)));
+            try self.emit_byte(0xb8 + a.to_byte());
             try self.emit_word(value);
         }
         fn emit_mov_soilb_byte(self: *MachineCode, a: Reg, value: u8) !void { // mov <a>b, <value>
             try self.emit_byte(0x41);
-            try self.emit_byte(0xb0 + @as(u8, @intFromEnum(a)));
+            try self.emit_byte(0xb0 + a.to_byte());
             try self.emit_byte(value);
         }
         fn emit_mov_rax_mem_of_rax(self: *MachineCode) !void { // mov rax, [rax]
@@ -539,12 +593,20 @@ const Compiler = struct {
         fn emit_not_soil(self: *MachineCode, a: Reg) !void { // not a
             try self.emit_byte(0x49);
             try self.emit_byte(0xf7);
-            try self.emit_byte(0xd0 + @as(u8, @intFromEnum(a)));
+            try self.emit_byte(0xd0 + a.to_byte());
         }
         fn emit_or_soil_soil(self: *MachineCode, a: Reg, b: Reg) !void { // or <a>, <b>
             try self.emit_byte(0x4d);
             try self.emit_byte(0x09);
-            try self.emit_byte(0xc0 + @as(u8, @intFromEnum(a)) + 8 * @as(u8, @intFromEnum(b)));
+            try self.emit_byte(0xc0 + a.to_byte() + 8 * b.to_byte());
+        }
+        fn emit_push(self: *MachineCode, a: Reg) !void { // push <a>
+            try self.emit_byte(0x41);
+            try self.emit_byte(0x50 + a.to_byte());
+        }
+        fn emit_pop(self: *MachineCode, a: Reg) !void { // pop <a>
+            try self.emit_byte(0x41);
+            try self.emit_byte(0x58 + a.to_byte());
         }
         fn emit_ret(self: *MachineCode) !void { // ret
             try self.emit_byte(0xc3);
@@ -576,7 +638,7 @@ const Compiler = struct {
         fn emit_sub_soil_soil(self: *MachineCode, a: Reg, b: Reg) !void { // sub <a>, <b>
             try self.emit_byte(0x4d);
             try self.emit_byte(0x29);
-            try self.emit_byte(0xc0 + @as(u8, @intFromEnum(a)) + 8 * @as(u8, @intFromEnum(b)));
+            try self.emit_byte(0xc0 + a.to_byte() + 8 * b.to_byte());
         }
         fn emit_sub_r8_8(self: *MachineCode) !void { // sub r8, 8
             try self.emit_byte(0x49);
@@ -597,7 +659,7 @@ const Compiler = struct {
         fn emit_xor_soil_soil(self: *MachineCode, a: Reg, b: Reg) !void { // xor <a>, <b>
             try self.emit_byte(0x4d);
             try self.emit_byte(0x31);
-            try self.emit_byte(0xc0 + @as(u8, @intFromEnum(a)) + 8 * @as(u8, @intFromEnum(b)));
+            try self.emit_byte(0xc0 + a.to_byte() + 8 * b.to_byte());
         }
     };
 };
@@ -694,6 +756,8 @@ fn run(program: Program, alloc: Alloc) !void {
     const protection = PROT.READ | PROT.EXEC;
     std.debug.assert(std.os.linux.mprotect(@ptrCast(program.machine_code), program.machine_code.len, protection) == 0);
 
+    std.debug.print("Machine code is at {x}.\n", .{program.machine_code});
+
     const mem_size = memory_size;
     const mem_base = program.initial_memory;
     const machine_code = program.machine_code;
@@ -705,11 +769,11 @@ fn run(program: Program, alloc: Alloc) !void {
         \\ mov $0, %%r13
         \\ mov $0, %%r14
         \\ mov $0, %%r15
-        \\ call qword [rax]
+        \\ call *%%rax
         : [ret] "=rax" (-> void),
-        : [mem_size] "{r8}" (mem_size),
-          [mem_base] "{rbp}" (mem_base),
-          [machine_code] "{rax}" (machine_code),
+        : [mem_size] "r8" (mem_size),
+          [mem_base] "rbp" (mem_base),
+          [machine_code] "rax" (machine_code),
         : "memory", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15", "rax", "rbx", "rcx", "rdx", "rsi", "rdi"
     );
     //   ; When we dump the stack at a panic, we know we reached to root of the VM
@@ -717,6 +781,113 @@ fn run(program: Program, alloc: Alloc) !void {
     //   label_after_call_to_jit:
     //   exit 0
 }
+
+const Syscalls = struct {
+    pub fn exit(status: usize) void {
+        std.debug.print("syscall: exit\n", .{});
+        _ = status;
+    }
+    pub fn print(msg_data: usize, msg_len: usize) void {
+        std.debug.print("syscall: print\n", .{});
+        _ = msg_data;
+        _ = msg_len;
+    }
+    pub fn log(msg_data: usize, msg_len: usize) void {
+        std.debug.print("syscall: log\n", .{});
+        _ = msg_data;
+        _ = msg_len;
+    }
+    pub fn create(filename_data: usize, filename_len: usize, mode: usize) usize {
+        std.debug.print("syscall: create\n", .{});
+        _ = filename_data;
+        _ = filename_len;
+        _ = mode;
+    }
+    pub fn open_reading(filename_data: usize, filename_len: usize, flags: usize, mode: usize) usize {
+        std.debug.print("syscall: open_reading\n", .{});
+        _ = filename_data;
+        _ = filename_len;
+        _ = flags;
+        _ = mode;
+    }
+    pub fn open_writing(filename_data: usize, filename_len: usize, flags: usize, mode: usize) usize {
+        std.debug.print("syscall: open_writing\n", .{});
+        _ = filename_data;
+        _ = filename_len;
+        _ = flags;
+        _ = mode;
+    }
+    pub fn read(file_descriptor: usize, buffer_data: usize, buffer_len: usize) usize {
+        std.debug.print("syscall: read\n", .{});
+        _ = file_descriptor;
+        _ = buffer_data;
+        _ = buffer_len;
+    }
+    pub fn write(file_descriptor: usize, buffer_data: usize, buffer_len: usize) usize {
+        std.debug.print("syscall: write\n", .{});
+        _ = file_descriptor;
+        _ = buffer_data;
+        _ = buffer_len;
+    }
+    pub fn close(file_descriptor: usize) usize {
+        std.debug.print("syscall: close\n", .{});
+        _ = file_descriptor;
+    }
+    pub fn argc() usize {
+        std.debug.print("syscall: argc\n", .{});
+    }
+    pub fn arg(index: usize, buffer_data: usize, buffer_len: usize) usize {
+        std.debug.print("syscall: arg\n", .{});
+        _ = index;
+        _ = buffer_data;
+        _ = buffer_len;
+    }
+    pub fn read_input(buffer_data: usize, buffer_len: usize) usize {
+        std.debug.print("syscall: read_input\n", .{});
+        _ = buffer_data;
+        _ = buffer_len;
+    }
+    pub fn execute(binary_data: usize, binary_len: usize) void {
+        std.debug.print("syscall: execute\n", .{});
+        _ = binary_data;
+        _ = binary_len;
+    }
+    pub fn ui_dimensions() struct { usize, usize } {
+        std.debug.print("syscall: ui_dimensions\n", .{});
+    }
+    pub fn ui_render(buffer_data: usize, buffer_width: usize, buffer_height: usize) void {
+        std.debug.print("syscall: ui_render\n", .{});
+        _ = buffer_data;
+        _ = buffer_width;
+        _ = buffer_height;
+    }
+};
+
+// const syscall_table = table: {
+//     const entries: [256]*void = undefined;
+//     // TODO: fill entries with placeholder
+//     for (@typeInfo(Syscalls).Struct.decls) |decl| {
+//         @compileLog(decl.name);
+//     }
+
+//     // exit          // | status          |              |               |      |
+//     // print         // | msg.data        | msg.len      |               |      |
+//     // log           // | msg.data        | msg.len      |               |      |
+//     // create        // | filename.data   | filename.len | mode          |      |
+//     // open_reading  // | filename.data   | filename.len | flags         | mode |
+//     // open_writing  // | filename.data   | filename.len | flags         | mode |
+//     // read          // | file descriptor | buffer.data  | buffer.len    |      |
+//     // write         // | file descriptor | buffer.data  | buffer.len    |      |
+//     // close         // | file descriptor |              |               |      |
+//     // argc          // |                 |              |               |      |
+//     // arg           // | arg index       | buffer.data  | buffer.len    |      |
+//     // read_input    // | buffer.data     | buffer.len   |               |      |
+//     // execute       // | binary.data     | binary.len   |               |      |
+//     // ui_dimensions // |                 |              |               |      |
+//     // ui_render     // | buffer.data     | buffer.width | buffer.height |      |
+
+//     break :table entries;
+// };
 
 pub fn main() !void {
     std.debug.print("Soil VM.\n", .{});
@@ -734,7 +905,7 @@ pub fn main() !void {
     }
 
     const binary = try load_binary(alloc, binary_path);
-    const program = try compile(alloc, binary);
+    const program = try compile(alloc, binary, Syscalls);
     try run(program, alloc);
 }
 
@@ -810,7 +981,6 @@ pub fn main() !void {
 //   mov rbx, len
 //   call panic
 // }
-// macro todo { panic str_todo, str_todo.len }
 
 // macro replace_byte_with_hex_digit target, with { ; clobbers rbx, rcx
 //   mov cl, 48 ; ASCII 0
@@ -853,10 +1023,10 @@ pub fn main() !void {
 // .too_few_args:
 //   panic str_usage, str_usage.len
 
-// ; Syscalls
+// ; SyscallTable
 // ; ========
 
-// syscalls:
+// SyscallTable:
 // .table:
 //   dq .exit         ;  0
 //   dq .print        ;  1
