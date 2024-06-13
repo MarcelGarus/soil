@@ -44,7 +44,7 @@ class InstructionsWidget extends HookWidget {
       });
     }
 
-    return TableView.builder(
+    final table = TableView.builder(
       key: tableViewKey,
       verticalDetails:
           ScrollableDetails.vertical(controller: verticalController),
@@ -103,6 +103,8 @@ class InstructionsWidget extends HookWidget {
         );
       },
     );
+
+    return Scrollbar(controller: verticalController, child: table);
   }
 
   String? _getLabel(Word offset) => state.vm.binary.labels?[offset];
