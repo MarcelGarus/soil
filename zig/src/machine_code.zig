@@ -16,11 +16,43 @@ const Patch = struct {
 };
 
 pub fn init(alloc: Alloc) !Self {
-    return Self{
-        .buffer = try alloc.allocWithOptions(u8, 100000000, std.mem.page_size, null),
+    var machine_code = Self{
+        .buffer = try allocate_memory_at_a_small_address(10000 * std.mem.page_size),
         .len = 0,
         .patches = ArrayList(Patch).init(alloc),
     };
+    if (false) {
+        try machine_code.emit_infinite_loop();
+    }
+    return machine_code;
+}
+
+// Well, here the trouble begins. Any old allocator won't work for us because the jmp instruction
+// can only jump 2^32 bytes forward or backwards (without resorting to such hacks as memory-indirect
+// jumps). Thus, we perform our own mmap to allocate memory at a small address.
+fn allocate_memory_at_a_small_address(len: usize) ![]align(std.mem.page_size) u8 {
+    std.debug.print("allocating memory\n", .{});
+    var page: usize = 0;
+    while (true) {
+        page += 1;
+        const address = std.os.linux.mmap(
+            @ptrFromInt(page * std.mem.page_size), // hint: small address, please!
+            len,
+            std.os.linux.PROT.READ | std.os.linux.PROT.WRITE,
+            .{ .TYPE = .PRIVATE, .ANONYMOUS = true },
+            -1,
+            0,
+        );
+        if (address == 0) return error.OutOfMemory;
+        const ptr = @as([*]align(std.mem.page_size) u8, @ptrFromInt(address));
+
+        // std.debug.print("page {}: mmap result is {x}.\n", .{ page, address });
+        if (address < std.math.pow(usize, 2, 32)) {
+            std.debug.print("found memory\n", .{});
+            return ptr[0..len];
+        }
+        _ = std.os.linux.munmap(ptr, len);
+    }
 }
 
 inline fn reserve(self: *Self, comptime amount: u8) !void {
@@ -45,13 +77,19 @@ fn emit_relative_patch(self: *Self, target: usize) !void {
     try self.reserve(4);
 }
 fn emit_relative_comptime(self: *Self, target: usize) !void {
+    std.debug.print("Emitting relative with base {x}\n", .{@intFromPtr(self.buffer.ptr)});
+    std.debug.print("Emitting relative with target {x}\n", .{target});
     // Relative targets are relative to the end of the instruction (hence, the + 4).
-    const base: i32 = @intCast(@intFromPtr(&self.buffer) + self.len + 4);
+    const base: i32 = @intCast(@intFromPtr(self.buffer.ptr) + self.len + 4);
     const target_i32: i32 = @intCast(target);
     const relative: i32 = target_i32 - base;
     try self.emit_int(relative);
 }
 
+pub fn emit_infinite_loop(self: *Self) !void { // jmp <this jmp>
+    try self.emit_byte(0xeb);
+    try self.emit_byte(0xfe);
+}
 pub fn emit_add_soil_soil(self: *Self, a: Reg, b: Reg) !void { // add <a>, <b>
     try self.emit_byte(0x4d);
     try self.emit_byte(0x01);
@@ -67,6 +105,12 @@ pub fn emit_add_rax_rbp(self: *Self) !void { // add rax, rbp
     try self.emit_byte(0x48);
     try self.emit_byte(0x89);
     try self.emit_byte(0xe8);
+}
+pub fn emit_add_rsp_8(self: *Self) !void { // add rsp, 8
+    try self.emit_byte(0x48);
+    try self.emit_byte(0x83);
+    try self.emit_byte(0xc4);
+    try self.emit_byte(0x08);
 }
 pub fn emit_and_soil_0xff(self: *Self, a: Reg) !void { // and <a>, 0xff
     try self.emit_byte(0x49);
@@ -94,6 +138,12 @@ pub fn emit_and_rax_0xff(self: *Self) !void { // and rax, 0xff
     try self.emit_byte(0x00);
     try self.emit_byte(0x00);
 }
+pub fn emit_and_rsp_0xfffffffffffffff0(self: *Self) !void { // and rsp, 0xfffffffffffffff0
+    try self.emit_byte(0x48);
+    try self.emit_byte(0x83);
+    try self.emit_byte(0xe4);
+    try self.emit_byte(0xf0);
+}
 pub fn emit_and_soil_soil(self: *Self, a: Reg, b: Reg) !void { // and <a>, <b>
     try self.emit_byte(0x4d);
     try self.emit_byte(0x21);
@@ -119,7 +169,7 @@ pub fn emit_imul_soil_soil(self: *Self, a: Reg, b: Reg) !void { // and <a>, <b>
     try self.emit_byte(0xc0 + b.to_byte() * 8 * a.to_byte());
 }
 pub fn emit_jmp(self: *Self, target: usize) !void { // jmp <target>
-    try self.emit_byte(0xe);
+    try self.emit_byte(0xe9);
     try self.emit_relative_patch(target);
 }
 pub fn emit_jmp_to_comptime(self: *Self, target: usize) !void { // jmp <target> // target can't be r12 or rax
@@ -135,35 +185,40 @@ pub fn emit_mov_al_byte(self: *Self, a: Reg) !void { // move al, <a>
     try self.emit_byte(0xb0);
     try self.emit_byte(a.to_byte());
 }
-pub fn emit_mov_r8_r12(self: *Self) !void { // mov r8, 12
+pub fn emit_mov_r8_r14(self: *Self) !void { // mov r8, 14
     try self.emit_byte(0x4d);
     try self.emit_byte(0x89);
-    try self.emit_byte(0xe0);
+    try self.emit_byte(0xf0);
 }
 pub fn emit_mov_rax_soil(self: *Self, a: Reg) !void { // mov rax, <a>
     try self.emit_byte(0x4c);
     try self.emit_byte(0x89);
     try self.emit_byte(0xc0 + 8 * a.to_byte());
 }
-pub fn emit_mov_rcx_r11(self: *Self) !void { // mov rcx, r11
-    try self.emit_byte(0x4c);
+pub fn emit_mov_rbp_rsp(self: *Self) !void { // mov rbp, rsp
+    try self.emit_byte(0x48);
     try self.emit_byte(0x89);
-    try self.emit_byte(0xd9);
+    try self.emit_byte(0xe5);
 }
-pub fn emit_mov_rdi_r8(self: *Self) !void { // mov rdi, r8
+pub fn emit_mov_rcx_r13(self: *Self) !void { // mov rcx, r13
     try self.emit_byte(0x4c);
     try self.emit_byte(0x89);
-    try self.emit_byte(0xc7);
+    try self.emit_byte(0xe9);
 }
-pub fn emit_mov_rdx_r10(self: *Self) !void { // mov rdx, r10
+pub fn emit_mov_rdi_r10(self: *Self) !void { // mov rdi, r10
     try self.emit_byte(0x4c);
     try self.emit_byte(0x89);
-    try self.emit_byte(0xd2);
+    try self.emit_byte(0xd7);
 }
-pub fn emit_mov_rsi_r9(self: *Self) !void { // mov rsi, r9
+pub fn emit_mov_rdx_r12(self: *Self) !void { // mov rdx, r12
     try self.emit_byte(0x4c);
     try self.emit_byte(0x89);
-    try self.emit_byte(0xce);
+    try self.emit_byte(0xe2);
+}
+pub fn emit_mov_rsi_r11(self: *Self) !void { // mov rsi, r11
+    try self.emit_byte(0x4c);
+    try self.emit_byte(0x89);
+    try self.emit_byte(0xde);
 }
 pub fn emit_mov_mem_of_rbp_plus_soil_soil(self: *Self, a: Reg, b: Reg) !void { // mov [rbp + <a>], <b>
     try self.emit_byte(0x4d);
@@ -265,9 +320,15 @@ pub fn emit_push(self: *Self, a: Reg) !void { // push <a>
     try self.emit_byte(0x41);
     try self.emit_byte(0x50 + a.to_byte());
 }
+pub fn emit_push_rbp(self: *Self) !void { // push rbp
+    try self.emit_byte(0x55);
+}
 pub fn emit_pop(self: *Self, a: Reg) !void { // pop <a>
     try self.emit_byte(0x41);
     try self.emit_byte(0x58 + a.to_byte());
+}
+pub fn emit_pop_rsp(self: *Self) !void { // pop rsp
+    try self.emit_byte(0x5c);
 }
 pub fn emit_ret(self: *Self) !void { // ret
     try self.emit_byte(0xc3);
@@ -305,6 +366,12 @@ pub fn emit_sub_r8_8(self: *Self) !void { // sub r8, 8
     try self.emit_byte(0x49);
     try self.emit_byte(0x83);
     try self.emit_byte(0xe8);
+    try self.emit_byte(0x08);
+}
+pub fn emit_sub_rsp_8(self: *Self) !void { // sub rsp, 8
+    try self.emit_byte(0x48);
+    try self.emit_byte(0x83);
+    try self.emit_byte(0xec);
     try self.emit_byte(0x08);
 }
 pub fn emit_test_r9_r9(self: *Self) !void { // test r9, r9

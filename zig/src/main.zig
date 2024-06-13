@@ -11,15 +11,11 @@ const MachineCode = @import("machine_code.zig");
 const Program = @import("program.zig");
 const Reg = @import("reg.zig").Reg;
 
-pub fn load_binary(alloc: Alloc, path: []const u8) ![]u8 {
-    return try std.fs.cwd().readFileAlloc(alloc, path, 1000000000);
-}
-
 pub fn main() !void {
     std.debug.print("Soil VM.\n", .{});
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer std.debug.assert(gpa.deinit() == .ok);
+    // defer std.debug.assert(gpa.deinit() == .ok);
     const alloc = gpa.allocator();
 
     var args = std.process.args();
@@ -30,95 +26,74 @@ pub fn main() !void {
         try rest.append(arg);
     }
 
-    const binary = try load_binary(alloc, binary_path);
+    std.debug.print("Running {s}.", .{binary_path});
+    const binary = try std.fs.cwd().readFileAlloc(alloc, binary_path, 1000000000);
     const program = try compile(alloc, binary, Syscalls);
     try program.run(alloc);
 }
 
 const Syscalls = struct {
-    pub fn exit(status: usize) void {
-        std.debug.print("syscall: exit\n", .{});
-        _ = status;
-    }
-    pub fn print(msg_data: usize, msg_len: usize) void {
-        std.debug.print("syscall: print\n", .{});
-        _ = msg_data;
-        _ = msg_len;
-    }
-    pub fn log(msg_data: usize, msg_len: usize) void {
-        std.debug.print("syscall: log\n", .{});
-        _ = msg_data;
-        _ = msg_len;
-    }
-    pub fn create(filename_data: usize, filename_len: usize, mode: usize) usize {
-        std.debug.print("syscall: create\n", .{});
-        _ = filename_data;
-        _ = filename_len;
-        _ = mode;
-    }
-    pub fn open_reading(filename_data: usize, filename_len: usize, flags: usize, mode: usize) usize {
-        std.debug.print("syscall: open_reading\n", .{});
-        _ = filename_data;
-        _ = filename_len;
-        _ = flags;
-        _ = mode;
-    }
-    pub fn open_writing(filename_data: usize, filename_len: usize, flags: usize, mode: usize) usize {
-        std.debug.print("syscall: open_writing\n", .{});
-        _ = filename_data;
-        _ = filename_len;
-        _ = flags;
-        _ = mode;
-    }
-    pub fn read(file_descriptor: usize, buffer_data: usize, buffer_len: usize) usize {
-        std.debug.print("syscall: read\n", .{});
-        _ = file_descriptor;
-        _ = buffer_data;
-        _ = buffer_len;
-    }
-    pub fn write(file_descriptor: usize, buffer_data: usize, buffer_len: usize) usize {
-        std.debug.print("syscall: write\n", .{});
-        _ = file_descriptor;
-        _ = buffer_data;
-        _ = buffer_len;
-    }
-    pub fn close(file_descriptor: usize) usize {
-        std.debug.print("syscall: close\n", .{});
-        _ = file_descriptor;
-    }
-    pub fn argc() usize {
-        std.debug.print("syscall: argc\n", .{});
-    }
-    pub fn arg(index: usize, buffer_data: usize, buffer_len: usize) usize {
-        std.debug.print("syscall: arg\n", .{});
-        _ = index;
-        _ = buffer_data;
-        _ = buffer_len;
-    }
-    pub fn read_input(buffer_data: usize, buffer_len: usize) usize {
-        std.debug.print("syscall: read_input\n", .{});
-        _ = buffer_data;
-        _ = buffer_len;
-    }
-    pub fn execute(binary_data: usize, binary_len: usize) void {
-        std.debug.print("syscall: execute\n", .{});
-        _ = binary_data;
-        _ = binary_len;
-    }
-    pub fn ui_dimensions() struct { usize, usize } {
-        std.debug.print("syscall: ui_dimensions\n", .{});
-    }
-    pub fn ui_render(buffer_data: usize, buffer_width: usize, buffer_height: usize) void {
-        std.debug.print("syscall: ui_render\n", .{});
-        _ = buffer_data;
-        _ = buffer_width;
-        _ = buffer_height;
+    pub fn exit(status: usize) callconv(.C) void {
+        std.debug.print("syscall: exit({})\n", .{status});
+        std.process.exit(@truncate(status));
     }
 
-    // .exit:
-    //   mov rax, 60   ; exit syscall
-    //   mov dil, r10b ; status code (from the a register)
-    //   syscall
+    pub fn print(msg_data: usize, msg_len: usize) callconv(.C) void {
+        std.debug.print("syscall: print({x}, {})\n", .{ msg_data, msg_len });
+    }
+
+    pub fn log(msg_data: usize, msg_len: usize) callconv(.C) void {
+        std.debug.print("syscall: log({x}, {})\n", .{ msg_data, msg_len });
+    }
+
+    pub fn create(filename_data: usize, filename_len: usize, mode: usize) callconv(.C) usize {
+        std.debug.print("syscall: create({x}, {}, {o})\n", .{ filename_data, filename_len, mode });
+        return 0;
+    }
+
+    pub fn open_reading(filename_data: usize, filename_len: usize, flags: usize, mode: usize) callconv(.C) usize {
+        std.debug.print("syscall: open_reading({x}, {}, {}, {o})\n", .{ filename_data, filename_len, flags, mode });
+        return 0;
+    }
+
+    pub fn open_writing(filename_data: usize, filename_len: usize, flags: usize, mode: usize) callconv(.C) usize {
+        std.debug.print("syscall: open_writing({x}, {}, {}, {o})\n", .{ filename_data, filename_len, flags, mode });
+        return 0;
+    }
+
+    pub fn read(file_descriptor: usize, buffer_data: usize, buffer_len: usize) callconv(.C) usize {
+        std.debug.print("syscall: read({}, {x}, {})\n", .{ file_descriptor, buffer_data, buffer_len });
+        return 0;
+    }
+
+    pub fn write(file_descriptor: usize, buffer_data: usize, buffer_len: usize) callconv(.C) usize {
+        std.debug.print("syscall: write({}, {x}, {})\n", .{ file_descriptor, buffer_data, buffer_len });
+        return 0;
+    }
+
+    pub fn close(file_descriptor: usize) callconv(.C) usize {
+        std.debug.print("syscall: close({})\n", .{file_descriptor});
+        return 0;
+    }
+
+    pub fn argc() callconv(.C) usize {
+        std.debug.print("syscall: argc()\n", .{});
+        return 0;
+    }
+
+    pub fn arg(index: usize, buffer_data: usize, buffer_len: usize) callconv(.C) usize {
+        std.debug.print("syscall: arg({}, {x}, {})\n", .{ index, buffer_data, buffer_len });
+        return 0;
+    }
+
+    pub fn read_input(buffer_data: usize, buffer_len: usize) callconv(.C) usize {
+        std.debug.print("syscall: read_input({x}, {})\n", .{ buffer_data, buffer_len });
+        return 0;
+    }
+
+    pub fn execute(binary_data: usize, binary_len: usize) callconv(.C) void {
+        std.debug.print("syscall: execute({x}, {})\n", .{ binary_data, binary_len });
+    }
 
     // .print:
     //   push_syscall_clobbers

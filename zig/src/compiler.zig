@@ -125,12 +125,16 @@ const Compiler = struct {
                 try machine_to_byte_code.append(byte_code_offset);
         }
 
+        std.debug.print("Fixing patches.\n", .{});
+
         for (machine_code.patches.items) |patch| {
             const target: i32 = @intCast(byte_to_machine_code.items[patch.target]);
             const base: i32 = @intCast(patch.where + 4); // relative to the end of the jump/call instruction
             const relative = target - base;
             std.mem.writeInt(i32, machine_code.buffer[patch.where..(patch.where + 4)][0..4], relative, .little);
         }
+
+        std.debug.print("Done fixing patches.\n", .{});
 
         return machine_code.buffer[0..machine_code.len];
     }
@@ -204,53 +208,83 @@ const Compiler = struct {
                 const number = try self.eat_byte();
                 inline for (0..256) |n| {
                     if (number == n) {
-                        const decls = @typeInfo(syscalls).Struct.decls;
-                        if (decls.len <= n) {
+                        const name: ?[]const u8 = switch (n) {
+                            0 => "exit",
+                            1 => "print",
+                            2 => "log",
+                            3 => "create",
+                            4 => "open_reading",
+                            5 => "open_writing",
+                            6 => "read",
+                            7 => "write",
+                            8 => "close",
+                            9 => "argc",
+                            10 => "arg",
+                            11 => "read_input",
+                            12 => "execute",
+                            13 => "ui_dimensions",
+                            14 => "ui_render",
+                            else => null,
+                        };
+                        const fun_exists = name != null and @hasDecl(syscalls, name.?);
+                        if (!fun_exists) {
                             // TODO: add call to stub
-                            break;
+                        } else {
+                            const fun = @field(syscalls, name.?);
+                            const signature = @typeInfo(@TypeOf(fun)).Fn;
+
+                            if (signature.is_generic)
+                                @compileError("Syscalls can't be generic.");
+                            if (signature.is_var_args)
+                                @compileError("Syscalls can't be var args.");
+                            if (signature.calling_convention != .C)
+                                @compileError("Syscalls must use the C calling convention.");
+
+                            // Save all the Soil register contents on the stack.
+                            try machine_code.emit_push(Reg.sp);
+                            try machine_code.emit_push(Reg.st);
+                            try machine_code.emit_push(Reg.a);
+                            try machine_code.emit_push(Reg.b);
+                            try machine_code.emit_push(Reg.c);
+                            try machine_code.emit_push(Reg.d);
+                            try machine_code.emit_push(Reg.e);
+                            try machine_code.emit_push(Reg.f);
+                            // TODO: Save rbp
+
+                            // Align the stack to 16 bytes.
+                            try machine_code.emit_mov_rbp_rsp();
+                            try machine_code.emit_and_rsp_0xfffffffffffffff0();
+                            try machine_code.emit_push_rbp();
+                            try machine_code.emit_sub_rsp_8();
+
+                            // Move args into the correct registers.
+                            const num_args = signature.params.len;
+                            if (num_args >= 1) try machine_code.emit_mov_rdi_r10();
+                            if (num_args >= 2) try machine_code.emit_mov_rsi_r11();
+                            if (num_args >= 3) try machine_code.emit_mov_rdx_r12();
+                            if (num_args >= 4) try machine_code.emit_mov_rcx_r13();
+                            if (num_args >= 5) try machine_code.emit_mov_r8_r14();
+
+                            // Call the syscall implementation.
+                            try machine_code.emit_call_comptime(@intFromPtr(&fun));
+
+                            // Unalign the stack.
+                            try machine_code.emit_add_rsp_8();
+                            try machine_code.emit_pop_rsp();
+
+                            // Restore Soil register contents.
+                            try machine_code.emit_pop(Reg.f);
+                            try machine_code.emit_pop(Reg.e);
+                            try machine_code.emit_pop(Reg.d);
+                            try machine_code.emit_pop(Reg.c);
+                            try machine_code.emit_pop(Reg.b);
+                            try machine_code.emit_pop(Reg.a);
+                            try machine_code.emit_pop(Reg.st);
+                            try machine_code.emit_pop(Reg.sp);
+                            // @compileLog(signature);
                         }
-                        const impl = @field(syscalls, decls[n].name);
-                        const signature = @typeInfo(@TypeOf(impl)).Fn;
-                        std.debug.assert(!signature.is_generic);
-                        std.debug.assert(!signature.is_var_args);
-                        std.debug.assert(signature.calling_convention == .C);
-
-                        try machine_code.emit_push(Reg.sp);
-                        try machine_code.emit_push(Reg.st);
-                        try machine_code.emit_push(Reg.a);
-                        try machine_code.emit_push(Reg.b);
-                        try machine_code.emit_push(Reg.c);
-                        try machine_code.emit_push(Reg.d);
-                        try machine_code.emit_push(Reg.e);
-                        try machine_code.emit_push(Reg.f);
-
-                        const num_args = signature.params.len;
-                        if (num_args >= 1) try machine_code.emit_mov_rdi_r8();
-                        if (num_args >= 2) try machine_code.emit_mov_rsi_r9();
-                        if (num_args >= 3) try machine_code.emit_mov_rdx_r10();
-                        if (num_args >= 4) try machine_code.emit_mov_rcx_r11();
-                        if (num_args >= 5) try machine_code.emit_mov_r8_r12();
-
-                        try machine_code.emit_call_comptime(@intFromPtr(&impl));
-
-                        try machine_code.emit_pop(Reg.f);
-                        try machine_code.emit_pop(Reg.e);
-                        try machine_code.emit_pop(Reg.d);
-                        try machine_code.emit_pop(Reg.c);
-                        try machine_code.emit_pop(Reg.b);
-                        try machine_code.emit_pop(Reg.a);
-                        try machine_code.emit_pop(Reg.st);
-                        try machine_code.emit_pop(Reg.sp);
-                        @compileLog(signature);
                     }
                 }
-                // TODO: implement
-                // mov r14, 0
-                // eat_byte r14b
-                // emit_mov_al_byte r14b         ; mov al, <syscall-number>
-                // mov r14, [SyscallTable.table + 8 * r14]
-                // emit_call_comptime r14        ; call <syscall>
-                // instruction_end
             },
             0xc0 => { // cmp
                 const regs = try self.parse_regs();
