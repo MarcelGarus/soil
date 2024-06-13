@@ -18,7 +18,36 @@ class InstructionsWidget extends HookWidget {
   Widget build(BuildContext context) {
     useListenable(state);
 
+    final tableViewKey = useGlobalKey();
+    final verticalController = useScrollController();
+
+    double offsetToY(Word offset) {
+      final rowsAbove = state.instructions
+          .where((it) => it.$1 < offset)
+          .map((it) => _getLabel(it.$1) == null ? 1 : 2)
+          .sum;
+      final rows = _getLabel(offset) == null ? 1 : 2;
+      return (rowsAbove + rows / 2) * _rowHeight;
+    }
+
+    final previousProgramCounter = usePrevious(state.vm.programCounter);
+    if (previousProgramCounter != state.vm.programCounter) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(
+          verticalController.animateTo(
+            offsetToY(state.vm.programCounter) -
+                tableViewKey.currentContext!.size!.height / 2,
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeInOut,
+          ),
+        );
+      });
+    }
+
     return TableView.builder(
+      key: tableViewKey,
+      verticalDetails:
+          ScrollableDetails.vertical(controller: verticalController),
       columnCount: _columnCount,
       columnBuilder: (index) => TableSpan(
         extent: switch (index) {
@@ -34,9 +63,7 @@ class InstructionsWidget extends HookWidget {
         return index.isEven
             ? TableSpan(
                 extent: FixedTableSpanExtent(
-                  state.vm.binary.labels?.containsKey(offset) ?? false
-                      ? _rowHeight
-                      : 0,
+                  _getLabel(offset) == null ? 0 : _rowHeight,
                 ),
               )
             : TableSpan(
@@ -49,7 +76,7 @@ class InstructionsWidget extends HookWidget {
       cellBuilder: (context, vicinity) {
         final (offset, instruction) = state.instructions[vicinity.row ~/ 2];
         if (vicinity.row.isEven) {
-          final label = state.vm.binary.labels?[offset];
+          final label = _getLabel(offset);
           return TableViewCell(
             columnMergeStart: 0,
             columnMergeSpan: _columnCount,
@@ -77,4 +104,6 @@ class InstructionsWidget extends HookWidget {
       },
     );
   }
+
+  String? _getLabel(Word offset) => state.vm.binary.labels?[offset];
 }
