@@ -1,0 +1,2 @@
+set disassembly-flavor intel
+starti /home/marcel/projects/soil/hello.soil
