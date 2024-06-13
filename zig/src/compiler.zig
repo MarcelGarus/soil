@@ -110,9 +110,9 @@ const Compiler = struct {
         var machine_to_byte_code = ArrayList(usize).init(self.alloc);
 
         while (self.cursor < end) {
-            std.debug.print("Compiling instruction.\n", .{});
             const byte_code_offset = self.cursor - byte_code_base;
             const machine_code_offset = machine_code.len;
+            std.debug.print("Compiling instruction. {x} -> {x}\n", .{ byte_code_offset, machine_code_offset });
 
             try self.compile_instruction(&machine_code, syscalls);
 
@@ -125,13 +125,14 @@ const Compiler = struct {
                 try machine_to_byte_code.append(byte_code_offset);
         }
 
-        std.debug.print("Fixing patches.\n", .{});
+        std.debug.print("Fixing {} patches.\n", .{machine_code.patches.items.len});
 
         for (machine_code.patches.items) |patch| {
-            const target: i32 = @intCast(byte_to_machine_code.items[patch.target]);
             const base: i32 = @intCast(patch.where + 4); // relative to the end of the jump/call instruction
+            const target: i32 = @intCast(byte_to_machine_code.items[patch.target]);
             const relative = target - base;
-            std.mem.writeInt(i32, machine_code.buffer[patch.where..(patch.where + 4)][0..4], relative, .little);
+            std.debug.print("Fixing jump at {x} to jump to {x} relative to {x}\n", .{ patch.where, target, base });
+            std.mem.writeInt(i32, machine_code.buffer[patch.where..][0..4], relative, .little);
         }
 
         std.debug.print("Done fixing patches.\n", .{});

@@ -73,7 +73,7 @@ fn emit_word(self: *Self, value: i64) !void {
 }
 
 fn emit_relative_patch(self: *Self, target: usize) !void {
-    try self.patches.append(.{ .where = self.buffer.len, .target = target });
+    try self.patches.append(.{ .where = self.len, .target = target });
     try self.reserve(4);
 }
 fn emit_relative_comptime(self: *Self, target: usize) !void {
