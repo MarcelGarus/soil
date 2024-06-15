@@ -240,8 +240,8 @@ const Compiler = struct {
                                         if (param_type != *Program.Vm)
                                             @compileError(name.? ++ " syscall's first arg is not *Vm, but " ++ @typeName(param_type) ++ ".");
                                     } else {
-                                        if (param_type != usize)
-                                            @compileError(name.? ++ " syscall's args must be usize (the register contents), but an argument is a " ++ @typeName(param_type) ++ ".");
+                                        if (param_type != i64)
+                                            @compileError(name.? ++ " syscall's args must be i64 (the register contents), but an argument is a " ++ @typeName(param_type) ++ ".");
                                     }
                                 }
                             }
