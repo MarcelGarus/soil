@@ -235,22 +235,34 @@ const Compiler = struct {
                             const signature = @typeInfo(@TypeOf(fun)).Fn;
 
                             if (signature.is_generic)
-                                @compileError("Syscalls can't be generic.");
+                                @compileError(name.? ++ " syscall is generic.");
                             if (signature.is_var_args)
-                                @compileError("Syscalls can't be var args.");
+                                @compileError(name.? ++ " syscall uses var args.");
                             if (signature.calling_convention != .C)
-                                @compileError("Syscalls must use the C calling convention.");
+                                @compileError(name.? ++ " syscall doesn't use the C calling convention.");
+                            inline for (signature.params, 0..) |param, i| {
+                                if (param.type) |param_type| {
+                                    if (i == 0) {
+                                        if (param_type != *Program.Vm)
+                                            @compileError(name.? ++ " syscall's first arg is not *Vm, but " ++ @typeName(param_type) ++ ".");
+                                    } else {
+                                        if (param_type != usize)
+                                            @compileError(name.? ++ " syscall's args must be usize (the register contents), but an argument is a " ++ @typeName(param_type) ++ ".");
+                                    }
+                                }
+                            }
 
                             // Save all the Soil register contents on the stack.
-                            try machine_code.emit_push(Reg.sp);
-                            try machine_code.emit_push(Reg.st);
-                            try machine_code.emit_push(Reg.a);
-                            try machine_code.emit_push(Reg.b);
-                            try machine_code.emit_push(Reg.c);
-                            try machine_code.emit_push(Reg.d);
-                            try machine_code.emit_push(Reg.e);
-                            try machine_code.emit_push(Reg.f);
-                            // TODO: Save rbp
+                            try machine_code.emit_push_soil(Reg.sp);
+                            try machine_code.emit_push_soil(Reg.st);
+                            try machine_code.emit_push_soil(Reg.a);
+                            try machine_code.emit_push_soil(Reg.b);
+                            try machine_code.emit_push_soil(Reg.c);
+                            try machine_code.emit_push_soil(Reg.d);
+                            try machine_code.emit_push_soil(Reg.e);
+                            try machine_code.emit_push_soil(Reg.f);
+                            try machine_code.emit_push_rbp();
+                            try machine_code.emit_push_rbx();
 
                             // Align the stack to 16 bytes.
                             try machine_code.emit_mov_rbp_rsp();
@@ -260,11 +272,11 @@ const Compiler = struct {
 
                             // Move args into the correct registers.
                             const num_args = signature.params.len;
-                            if (num_args >= 1) try machine_code.emit_mov_rdi_r10();
-                            if (num_args >= 2) try machine_code.emit_mov_rsi_r11();
-                            if (num_args >= 3) try machine_code.emit_mov_rdx_r12();
-                            if (num_args >= 4) try machine_code.emit_mov_rcx_r13();
-                            if (num_args >= 5) try machine_code.emit_mov_r8_r14();
+                            if (num_args >= 1) try machine_code.emit_mov_rdi_rbx();
+                            if (num_args >= 2) try machine_code.emit_mov_rsi_r10();
+                            if (num_args >= 3) try machine_code.emit_mov_rdx_r11();
+                            if (num_args >= 4) try machine_code.emit_mov_rcx_r12();
+                            if (num_args >= 5) try machine_code.emit_mov_r8_r13();
 
                             // Call the syscall implementation.
                             try machine_code.emit_call_comptime(@intFromPtr(&fun));
@@ -274,15 +286,16 @@ const Compiler = struct {
                             try machine_code.emit_pop_rsp();
 
                             // Restore Soil register contents.
-                            try machine_code.emit_pop(Reg.f);
-                            try machine_code.emit_pop(Reg.e);
-                            try machine_code.emit_pop(Reg.d);
-                            try machine_code.emit_pop(Reg.c);
-                            try machine_code.emit_pop(Reg.b);
-                            try machine_code.emit_pop(Reg.a);
-                            try machine_code.emit_pop(Reg.st);
-                            try machine_code.emit_pop(Reg.sp);
-                            // @compileLog(signature);
+                            try machine_code.emit_pop_rbx();
+                            try machine_code.emit_pop_rbp();
+                            try machine_code.emit_pop_soil(Reg.f);
+                            try machine_code.emit_pop_soil(Reg.e);
+                            try machine_code.emit_pop_soil(Reg.d);
+                            try machine_code.emit_pop_soil(Reg.c);
+                            try machine_code.emit_pop_soil(Reg.b);
+                            try machine_code.emit_pop_soil(Reg.a);
+                            try machine_code.emit_pop_soil(Reg.st);
+                            try machine_code.emit_pop_soil(Reg.sp);
                         }
                     }
                 }
@@ -362,6 +375,37 @@ const Compiler = struct {
         }
     }
 };
+
+fn equal(comptime T: type, a: []const T, b: []const T) bool {
+    if (@sizeOf(T) == 0) return true;
+
+    @compileLog("checking lens");
+    if (a.len != b.len) return false;
+    if (a.len == 0 or a.ptr == b.ptr) return true;
+
+    @compileLog("checking items");
+    for (a, b) |a_elem, b_elem| {
+        if (a_elem != b_elem) {
+            // std.debug.print(comptime fmt: []const u8, args: anytype);
+            const astr = comptime blk: {
+                var buf: [20]u8 = undefined;
+                break :blk try intToString(a_elem, &buf);
+            };
+            const bstr = comptime blk: {
+                var buf: [20]u8 = undefined;
+                break :blk try intToString(b_elem, &buf);
+            };
+            @compileLog("not equal: " ++ astr ++ " and " ++ bstr);
+            return false;
+        } else {
+            @compileLog("equal");
+        }
+    }
+    return true;
+}
+fn intToString(comptime int: u32, comptime buf: []u8) ![]const u8 {
+    return try std.fmt.bufPrint(buf, "{}", .{int});
+}
 
 // ; Panic with stack trace
 // ; ======================
