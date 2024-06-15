@@ -112,7 +112,6 @@ const Compiler = struct {
         while (self.cursor < end) {
             const byte_code_offset = self.cursor - byte_code_base;
             const machine_code_offset = machine_code.len;
-            std.debug.print("Compiling instruction. {x} -> {x}\n", .{ byte_code_offset, machine_code_offset });
 
             try self.compile_instruction(&machine_code, syscalls);
 
@@ -125,17 +124,12 @@ const Compiler = struct {
                 try machine_to_byte_code.append(byte_code_offset);
         }
 
-        std.debug.print("Fixing {} patches.\n", .{machine_code.patches.items.len});
-
         for (machine_code.patches.items) |patch| {
             const base: i32 = @intCast(patch.where + 4); // relative to the end of the jump/call instruction
             const target: i32 = @intCast(byte_to_machine_code.items[patch.target]);
             const relative = target - base;
-            std.debug.print("Fixing jump at {x} to jump to {x} relative to {x}\n", .{ patch.where, target, base });
             std.mem.writeInt(i32, machine_code.buffer[patch.where..][0..4], relative, .little);
         }
-
-        std.debug.print("Done fixing patches.\n", .{});
 
         return machine_code.buffer[0..machine_code.len];
     }
@@ -270,13 +264,21 @@ const Compiler = struct {
                             try machine_code.emit_push_rbp();
                             try machine_code.emit_sub_rsp_8();
 
-                            // Move args into the correct registers.
+                            // Move args into the correct registers for the C ABI.
+                            // Soil        C ABI
+                            // Vm (rbx) -> arg 1 (rdi)
+                            // a (r10)  -> arg 2 (rsi)
+                            // b (r11)  -> arg 3 (rdx)
+                            // c (r12)  -> arg 4 (rcx)
+                            // d (r13)  -> arg 5 (r8)
+                            // e (r14)  -> arg 6 (r9)
                             const num_args = signature.params.len;
                             if (num_args >= 1) try machine_code.emit_mov_rdi_rbx();
                             if (num_args >= 2) try machine_code.emit_mov_rsi_r10();
                             if (num_args >= 3) try machine_code.emit_mov_rdx_r11();
                             if (num_args >= 4) try machine_code.emit_mov_rcx_r12();
-                            if (num_args >= 5) try machine_code.emit_mov_r8_r13();
+                            if (num_args >= 5) try machine_code.emit_mov_soil_soil(.sp, .d);
+                            if (num_args >= 5) try machine_code.emit_mov_soil_soil(.st, .e);
 
                             // Call the syscall implementation.
                             try machine_code.emit_call_comptime(@intFromPtr(&fun));
@@ -308,7 +310,7 @@ const Compiler = struct {
             0xc1 => { // isequal
                 try machine_code.emit_test_r9_r9(); // test r9, r9
                 try machine_code.emit_sete_r9b(); // sete r9b
-                try machine_code.emit_and_r9_0xff(); // and r9, 0fh
+                try machine_code.emit_and_soil_0xff(.st); // and r9, 0fh
             },
             0xc2 => { // isless
                 try machine_code.emit_shr_r9_63(); // shr r9, 63
@@ -316,15 +318,15 @@ const Compiler = struct {
             0xc3 => { // isgreater
                 try machine_code.emit_test_r9_r9(); // test r9, r9
                 try machine_code.emit_setg_r9b(); // setg r9b
-                try machine_code.emit_and_r9_0xff(); // and r9, 0fh
+                try machine_code.emit_and_soil_0xff(.st); // and r9, 0fh
             },
             0xc4 => { // islessequal
                 try machine_code.emit_test_r9_r9(); // test r9, r9
                 try machine_code.emit_setle_r9b(); // setle r9b
-                try machine_code.emit_and_r9_0xff(); // and r9, 0fh
+                try machine_code.emit_and_soil_0xff(.st); // and r9, 0fh
             },
             0xc5 => { // isgreaterequal
-                try machine_code.emit_not_r9(); // not r9
+                try machine_code.emit_not_soil(.st); // not r9
                 try machine_code.emit_shr_r9_63(); // shr r9, 63
             },
             0xa0 => { // add

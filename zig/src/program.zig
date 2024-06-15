@@ -25,7 +25,6 @@ pub fn run(program: @This(), alloc: Alloc) !void {
     // std.debug.print("Vm: {x}\n", .{@intFromPtr(&vm)});
     // std.debug.print("Machine code: {x}\n", .{@intFromPtr(program.machine_code.ptr)});
     // std.debug.print("Mem base: {x}\n", .{@intFromPtr(vm.memory.ptr)});
-    std.debug.print("Running compiled machine code.\n", .{});
     actual_run(program, &vm);
 }
 fn actual_run(program: @This(), vm: *Vm) void {

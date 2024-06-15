@@ -31,8 +31,7 @@ pub fn init(alloc: Alloc) !Self {
 // can only jump 2^32 bytes forward or backwards (without resorting to such hacks as memory-indirect
 // jumps). Thus, we perform our own mmap to allocate memory at a small address.
 fn allocate_memory_at_a_small_address(len: usize) ![]align(std.mem.page_size) u8 {
-    std.debug.print("allocating memory\n", .{});
-    var page: usize = 0;
+    var page: usize = @intFromPtr(&allocate_memory_at_a_small_address) / std.mem.page_size;
     while (true) {
         page += 1;
         const address = std.os.linux.mmap(
@@ -48,7 +47,6 @@ fn allocate_memory_at_a_small_address(len: usize) ![]align(std.mem.page_size) u8
 
         // std.debug.print("page {}: mmap result is {x}.\n", .{ page, address });
         if (address < std.math.pow(usize, 2, 32)) {
-            std.debug.print("found memory\n", .{});
             return ptr[0..len];
         }
         _ = std.os.linux.munmap(ptr, len);
@@ -77,8 +75,6 @@ fn emit_relative_patch(self: *Self, target: usize) !void {
     try self.reserve(4);
 }
 fn emit_relative_comptime(self: *Self, target: usize) !void {
-    std.debug.print("Emitting relative with base {x}\n", .{@intFromPtr(self.buffer.ptr)});
-    std.debug.print("Emitting relative with target {x}\n", .{target});
     // Relative targets are relative to the end of the instruction (hence, the + 4).
     const base: i32 = @intCast(@intFromPtr(self.buffer.ptr) + self.len + 4);
     const target_i32: i32 = @intCast(target);
@@ -121,15 +117,6 @@ pub fn emit_and_soil_0xff(self: *Self, a: Reg) !void { // and <a>, 0xff
     try self.emit_byte(0x00);
     try self.emit_byte(0x00);
 }
-pub fn emit_and_r9_0xff(self: *Self) !void { // and r9, 0xff
-    try self.emit_byte(0x49);
-    try self.emit_byte(0x81);
-    try self.emit_byte(0xe1);
-    try self.emit_byte(0xff);
-    try self.emit_byte(0x00);
-    try self.emit_byte(0x00);
-    try self.emit_byte(0x00);
-}
 pub fn emit_and_rax_0xff(self: *Self) !void { // and rax, 0xff
     try self.emit_byte(0x48);
     try self.emit_byte(0x25);
@@ -162,11 +149,11 @@ pub fn emit_idiv_soil(self: *Self, a: Reg) !void { // idiv <a>
     try self.emit_byte(0xf7);
     try self.emit_byte(0xf8 + a.to_byte());
 }
-pub fn emit_imul_soil_soil(self: *Self, a: Reg, b: Reg) !void { // and <a>, <b>
+pub fn emit_imul_soil_soil(self: *Self, a: Reg, b: Reg) !void { // imul <a>, <b>
     try self.emit_byte(0x4d);
     try self.emit_byte(0x0f);
     try self.emit_byte(0xaf);
-    try self.emit_byte(0xc0 + b.to_byte() * 8 * a.to_byte());
+    try self.emit_byte(0xc0 + b.to_byte() + 8 * a.to_byte());
 }
 pub fn emit_jmp(self: *Self, target: usize) !void { // jmp <target>
     try self.emit_byte(0xe9);
@@ -181,14 +168,33 @@ pub fn emit_jnz(self: *Self, target: usize) !void { // jnz <target> // target ca
     try self.emit_byte(0x85);
     try self.emit_relative_patch(target);
 }
-pub fn emit_mov_al_byte(self: *Self, a: Reg) !void { // move al, <a>
+pub fn emit_mov_al_soilb(self: *Self, a: Reg) !void { // mov al, <a>b
     try self.emit_byte(0xb0);
     try self.emit_byte(a.to_byte());
 }
-pub fn emit_mov_r8_r13(self: *Self) !void { // mov r8, r13
+pub fn emit_mov_mem_of_rbp_plus_soil_soil(self: *Self, a: Reg, b: Reg) !void { // mov [rbp + <a>], <b>
     try self.emit_byte(0x4d);
     try self.emit_byte(0x89);
-    try self.emit_byte(0xe8);
+    if (a == .d) { // for <a> = r13, the encoding is different
+        try self.emit_byte(0x44 + 8 * b.to_byte());
+        try self.emit_byte(0x2d);
+        try self.emit_byte(0x00);
+    } else {
+        try self.emit_byte(0x04 + 8 * b.to_byte());
+        try self.emit_byte(0x28 + a.to_byte());
+    }
+}
+pub fn emit_mov_mem_of_rbp_plus_soil_soilb(self: *Self, a: Reg, b: Reg) !void { // mov [rbp + <a>], <b>b
+    try self.emit_byte(0x45);
+    try self.emit_byte(0x88);
+    if (a == .d) { // for <a> = r13, the encoding is different
+        try self.emit_byte(0x44 + 8 * b.to_byte());
+        try self.emit_byte(0x2d);
+        try self.emit_byte(0x00);
+    } else {
+        try self.emit_byte(0x04 + 8 * b.to_byte());
+        try self.emit_byte(0x28 + a.to_byte());
+    }
 }
 pub fn emit_mov_rax_soil(self: *Self, a: Reg) !void { // mov rax, <a>
     try self.emit_byte(0x4c);
@@ -219,30 +225,6 @@ pub fn emit_mov_rsi_r10(self: *Self) !void { // mov rsi, r10
     try self.emit_byte(0x4c);
     try self.emit_byte(0x89);
     try self.emit_byte(0xd6);
-}
-pub fn emit_mov_mem_of_rbp_plus_soil_soil(self: *Self, a: Reg, b: Reg) !void { // mov [rbp + <a>], <b>
-    try self.emit_byte(0x4d);
-    try self.emit_byte(0x89);
-    if (a == .d) { // for <a> = r13, the encoding is different
-        try self.emit_byte(0x44 + 8 * b.to_byte());
-        try self.emit_byte(0x2d);
-        try self.emit_byte(0x00);
-    } else {
-        try self.emit_byte(0x04 + 8 * b.to_byte());
-        try self.emit_byte(0x28 + a.to_byte());
-    }
-}
-pub fn emit_mov_mem_of_rbp_plus_soil_soilb(self: *Self, a: Reg, b: Reg) !void { // mov [rbp + <a>], <b>b
-    try self.emit_byte(0x45);
-    try self.emit_byte(0x88);
-    if (a == .d) { // for <a> = r13, the encoding is different
-        try self.emit_byte(0x44 + 8 * b.to_byte());
-        try self.emit_byte(0x2d);
-        try self.emit_byte(0x00);
-    } else {
-        try self.emit_byte(0x04 + 8 * b.to_byte());
-        try self.emit_byte(0x28 + a.to_byte());
-    }
 }
 pub fn emit_mov_soil_rdx(self: *Self, a: Reg) !void { // mov <a>, rdx
     try self.emit_byte(0x49);
@@ -301,12 +283,7 @@ pub fn emit_mov_rax_mem_of_rax(self: *Self) !void { // mov rax, [rax]
 pub fn emit_nop(self: *Self) !void { // nop
     try self.emit_byte(0x90);
 }
-pub fn emit_not_r9(self: *Self) !void { // not r9
-    try self.emit_byte(0x49);
-    try self.emit_byte(0xf7);
-    try self.emit_byte(0xd1);
-}
-pub fn emit_not_soil(self: *Self, a: Reg) !void { // not a
+pub fn emit_not_soil(self: *Self, a: Reg) !void { // not <a>
     try self.emit_byte(0x49);
     try self.emit_byte(0xf7);
     try self.emit_byte(0xd0 + a.to_byte());
