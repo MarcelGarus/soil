@@ -24,17 +24,18 @@ const std = @import("std");
 const Alloc = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const MachineCode = @import("machine_code.zig");
-const Program = @import("program.zig");
-const LabelAndOffset = Program.LabelAndOffset;
+const Vm = @import("vm.zig");
+const LabelAndOffset = Vm.LabelAndOffset;
 const Reg = @import("reg.zig").Reg;
 
-pub fn compile(alloc: Alloc, binary: []u8, syscalls: type) !Program {
-    var program = Program{
-        // Allocate one byte more than memory_size so that SyscallTable that need null-terminated
-        // strings can temporarily swap out one byte after a string in memory, even if it's at the
-        // end of the VM memory.
-        .initial_memory = &[_]u8{},
+pub fn compile(alloc: Alloc, binary: []u8, syscalls: type) !Vm {
+    var vm = Vm{
+        .byte_code = &[_]u8{},
         .machine_code = &[_]u8{},
+        .byte_to_machine_code = &[_]usize{},
+        .machine_to_byte_code = &[_]usize{},
+        .memory = try alloc.alloc(u8, Vm.memory_size),
+        .labels = &[_]LabelAndOffset{},
     };
 
     var compiler = Compiler{
@@ -51,14 +52,21 @@ pub fn compile(alloc: Alloc, binary: []u8, syscalls: type) !Program {
         const section_type = compiler.eat_byte() catch break;
         const section_len: usize = @intCast(try compiler.eat_word());
         switch (section_type) {
-            0 => program.machine_code = try compiler.compile_byte_code(section_len, syscalls),
-            1 => program.initial_memory = try compiler.eat_amount(section_len),
-            2 => _ = try compiler.parse_labels(),
+            0 => {
+                const byte_code = compiler.input[compiler.cursor..][0..section_len];
+                const compiled = try compiler.compile_byte_code(section_len, syscalls);
+                vm.byte_code = byte_code;
+                vm.machine_code = compiled.machine_code;
+                vm.byte_to_machine_code = compiled.byte_to_machine_code;
+                vm.machine_to_byte_code = compiled.machine_to_byte_code;
+            },
+            1 => @memcpy(vm.memory[0..section_len], try compiler.eat_amount(section_len)),
+            3 => vm.labels = try compiler.parse_labels(),
             else => compiler.cursor += section_len, // skip section
         }
     }
 
-    return program;
+    return vm;
 }
 
 const Compiler = struct {
@@ -99,7 +107,13 @@ const Compiler = struct {
         const byte = try self.eat_byte();
         return .{ .a = try Reg.parse(byte & 0x0f), .b = try Reg.parse(byte >> 4) };
     }
-    fn compile_byte_code(self: *Compiler, len: usize, syscalls: type) ![]align(std.mem.page_size) u8 {
+
+    const CompiledCode = struct {
+        machine_code: []align(std.mem.page_size) u8,
+        byte_to_machine_code: []usize,
+        machine_to_byte_code: []usize,
+    };
+    fn compile_byte_code(self: *Compiler, len: usize, syscalls: type) !CompiledCode {
         const byte_code_base = self.cursor;
         const end = byte_code_base + len;
 
@@ -131,14 +145,21 @@ const Compiler = struct {
             std.mem.writeInt(i32, machine_code.buffer[patch.where..][0..4], relative, .little);
         }
 
-        return machine_code.buffer[0..machine_code.len];
+        return .{
+            .machine_code = machine_code.buffer[0..machine_code.len],
+            .byte_to_machine_code = byte_to_machine_code.items,
+            .machine_to_byte_code = machine_to_byte_code.items,
+        };
     }
     fn compile_instruction(self: *Compiler, machine_code: *MachineCode, syscalls: type) !void {
         const opcode = try self.eat_byte();
         switch (opcode) {
             0x00 => {}, // nop
             0xe0 => { // panic
-                try machine_code.emit_call_comptime(@intFromPtr(&panic_with_info)); // call panic_with_info
+                try machine_code.emit_mov_rdi_rbx(); // mov rdi, rbx (VM)
+                try machine_code.emit_mov_rsi_rsp(); // mov rsi, rsp (stack pointer)
+                try machine_code.emit_and_rsp_0xfffffffffffffff0(); // Align the stack to 16 bytes.
+                try machine_code.emit_call_comptime(@intFromPtr(&panic_vm)); // call panic_vm
             },
             0xd0 => { // move
                 const regs = try self.parse_regs();
@@ -237,7 +258,7 @@ const Compiler = struct {
                             inline for (signature.params, 0..) |param, i| {
                                 if (param.type) |param_type| {
                                     if (i == 0) {
-                                        if (param_type != *Program.Vm)
+                                        if (param_type != *Vm)
                                             @compileError(name.? ++ " syscall's first arg is not *Vm, but " ++ @typeName(param_type) ++ ".");
                                     } else {
                                         if (param_type != i64)
@@ -418,82 +439,31 @@ fn intToString(comptime int: u32, comptime buf: []u8) ![]const u8 {
     return try std.fmt.bufPrint(buf, "{}", .{int});
 }
 
-// ; Panic with stack trace
-// ; ======================
+fn panic_vm(vm: *Vm, stack_pointer: [:0]usize) void {
+    std.debug.print("\nOh no! The program panicked.\n", .{});
 
-// panic_with_info:
-//   eprint str_vm_panicked, str_vm_panicked.len
-
-//   ; The stack
-//   eprint str_stack_intro, str_stack_intro.len
-//   ; dbg: jmp dbg
-// .print_all_stack_entries:
-//   ; .dbg: jmp .dbg
-//   pop rax
-//   cmp rax, label_after_call_to_jit
-//   je .done_printing_stack
-//   call .print_stack_entry
-//   jmp .print_all_stack_entries
-// .print_stack_entry: ; absolute machine code address is in rax
-//   ; If a machine code offset is on the stack, then this refers to the
-//   ; instruction _after_ the call instruction (the instruction that will be
-//   ; returned to). To get the original call instruction, we need to look at the
-//   ; previous instruction. We can do so by mapping the byte before the current
-//   ; instruction. That's safe to do because the first byte of the machine code
-//   ; can never be a return target (that would imply that there's another
-//   ; instruction before it that called something).
-//   mov rbx, rax
-//   dec rbx ; to compensate for what's described above
-//   sub rbx, [machine_code]
-//   cmp rbx, [machine_code.len]
-//   jg .outside_of_byte_code
-//   imul rbx, 4
-//   add rbx, [machine_code_to_byte_code]
-//   mov rax, 0
-//   mov eax, [rbx] ; byte code offset
-//   ; find the corresponding label by iterating all the labels from the back
-//   mov rcx, [labels.len]
-// .finding_label:
-//   cmp rcx, 0
-//   je .no_label_matches
-//   dec rcx
-//   mov rdx, rcx
-//   imul rdx, 24
-//   add rdx, [labels] ; rdx is now a pointer to the label entry (byte code offset, label pointer, len)
-//   mov rdi, [rdx] ; load the byte code offset of the label
-//   cmp rdi, rax ; is this label before our stack trace byte code offset?
-//   jg .finding_label ; nope
-//   ; it matches! print it
-//   push rax
-//   push rbx
-//   mov rax, [rdx + 8] ; pointer to the label string
-//   mov rbx, [rdx + 16] ; length of the label
-//   call eprint
-//   eprint str_newline, 1
-//   pop rbx
-//   pop rax
-//   ret
-// .outside_of_byte_code:
-//   eprint str_outside_of_byte_code, str_outside_of_byte_code.len
-// .no_label_matches:
-//   eprint str_no_label, str_no_label.len
-//   ret
-// .done_printing_stack:
-//   ; The registers
-//   ; printf("Registers:\n");
-//   ; printf("sp = %8ld %8lx\n", SP, SP);
-//   ; printf("st = %8ld %8lx\n", ST, ST);
-//   ; printf("a  = %8ld %8lx\n", REGA, REGA);
-//   ; printf("b  = %8ld %8lx\n", REGB, REGB);
-//   ; printf("c  = %8ld %8lx\n", REGC, REGC);
-//   ; printf("d  = %8ld %8lx\n", REGD, REGD);
-//   ; printf("e  = %8ld %8lx\n", REGE, REGE);
-//   ; printf("f  = %8ld %8lx\n", REGF, REGF);
-//   ; printf("\n");
-
-fn panic_with_info() void {}
-
-fn panic_with_stack_trace() void {
-    std.debug.print("Panicking\n");
+    var i: usize = 0;
+    while (stack_pointer[i] != 0) : (i += 1) {
+        const size_of_call_instruction = 5;
+        const machine_code_absolute = stack_pointer[i] - size_of_call_instruction;
+        if (machine_code_absolute < @intFromPtr(vm.machine_code.ptr)) {
+            std.debug.print("{x:10} <Zig code>", .{machine_code_absolute});
+            continue;
+        }
+        const machine_code_offset = machine_code_absolute - @intFromPtr(vm.machine_code.ptr);
+        const byte_code_offset = vm.machine_to_byte_code[machine_code_offset];
+        const label = search_for_label(vm.labels, byte_code_offset) orelse "<no label>";
+        std.debug.print("{x:10} {s}\n", .{ byte_code_offset, label });
+    }
     std.process.exit(1);
+}
+
+fn search_for_label(labels: []LabelAndOffset, offset: usize) ?[]const u8 {
+    var i = labels.len;
+    while (i > 0) {
+        i -= 1;
+        const label = labels[i];
+        if (label.offset <= offset) return label.label;
+    }
+    return null;
 }

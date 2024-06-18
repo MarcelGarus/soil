@@ -226,6 +226,11 @@ pub fn emit_mov_rsi_r10(self: *Self) !void { // mov rsi, r10
     try self.emit_byte(0x89);
     try self.emit_byte(0xd6);
 }
+pub fn emit_mov_rsi_rsp(self: *Self) !void { // mov rsi, rsp
+    try self.emit_byte(0x48);
+    try self.emit_byte(0x89);
+    try self.emit_byte(0xe6);
+}
 pub fn emit_mov_soil_rdx(self: *Self, a: Reg) !void { // mov <a>, rdx
     try self.emit_byte(0x49);
     try self.emit_byte(0x89);

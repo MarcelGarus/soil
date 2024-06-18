@@ -8,8 +8,7 @@ const Alloc = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const compile = @import("compiler.zig").compile;
 const MachineCode = @import("machine_code.zig");
-const Program = @import("program.zig");
-const Vm = Program.Vm;
+const Vm = @import("vm.zig");
 const Reg = @import("reg.zig").Reg;
 
 const syscall_log = std.log.scoped(.syscall);
@@ -30,8 +29,8 @@ pub fn main() !void {
     while (args.next()) |arg| try rest.append(arg);
 
     const binary = try std.fs.cwd().readFileAlloc(alloc, binary_path, 1000000000);
-    const program = try compile(alloc, binary, Syscalls);
-    try program.run(alloc);
+    var vm = try compile(alloc, binary, Syscalls);
+    try vm.run();
 }
 
 const Syscalls = struct {
@@ -57,15 +56,16 @@ const Syscalls = struct {
         const filename = vm.memory[@intCast(filename_data)..][0..@intCast(filename_len)];
         const flags = .{ .ACCMODE = .RDWR, .CREAT = true, .TRUNC = true };
         const fd = std.os.linux.open(&(toCPath(filename) catch unreachable), flags, @intCast(mode));
-        return @intCast(fd);
+        return @bitCast(fd);
     }
 
     pub fn open_reading(vm: *Vm, filename_data: i64, filename_len: i64) callconv(.C) i64 {
         syscall_log.info("open_reading({x}, {})\n", .{ filename_data, filename_len });
         const filename = vm.memory[@intCast(filename_data)..][0..@intCast(filename_len)];
+        std.debug.print("opening {s}\n", .{filename});
         const flags = .{ .ACCMODE = .RDONLY };
         const fd = std.os.linux.open(&(toCPath(filename) catch unreachable), flags, 0);
-        return @intCast(fd);
+        return @bitCast(fd);
     }
 
     pub fn open_writing(vm: *Vm, filename_data: i64, filename_len: i64) callconv(.C) i64 {
@@ -73,27 +73,27 @@ const Syscalls = struct {
         const filename = vm.memory[@intCast(filename_data)..][0..@intCast(filename_len)];
         const flags = .{ .ACCMODE = .WRONLY, .TRUNC = true };
         const fd = std.os.linux.open(&(toCPath(filename) catch unreachable), flags, 0);
-        return @intCast(fd);
+        return @bitCast(fd);
     }
 
     pub fn read(vm: *Vm, file_descriptor: i64, buffer_data: i64, buffer_len: i64) callconv(.C) i64 {
         syscall_log.info("read({}, {x}, {})\n", .{ file_descriptor, buffer_data, buffer_len });
         const fd: i32 = @intCast(file_descriptor);
         const len = std.os.linux.read(fd, vm.memory[@intCast(buffer_data)..].ptr, @intCast(buffer_len));
-        return @intCast(len);
+        return @bitCast(len);
     }
 
     pub fn write(vm: *Vm, file_descriptor: i64, buffer_data: i64, buffer_len: i64) callconv(.C) i64 {
         syscall_log.info("write({}, {x}, {})\n", .{ file_descriptor, buffer_data, buffer_len });
         const fd: i32 = @intCast(file_descriptor);
         const len = std.os.linux.write(fd, vm.memory[@intCast(buffer_data)..].ptr, @intCast(buffer_len));
-        return @intCast(len);
+        return @bitCast(len);
     }
 
     pub fn close(_: *Vm, file_descriptor: i64) callconv(.C) i64 {
         syscall_log.info("close({})\n", .{file_descriptor});
         const fd: i32 = @intCast(file_descriptor);
-        return @intCast(std.os.linux.close(fd));
+        return @bitCast(std.os.linux.close(fd));
     }
 
     pub fn argc(_: *Vm) callconv(.C) i64 {
