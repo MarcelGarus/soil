@@ -101,12 +101,13 @@ const Syscalls = struct {
         var args = std.process.args();
         var count: i64 = 0;
         while (args.skip()) count += 1;
-        return count;
+        return count - 1; // Skip the first arg, which is just the soil invocation.
     }
 
     pub fn arg(vm: *Vm, index: i64, buffer_data: i64, buffer_len: i64) callconv(.C) i64 {
         syscall_log.info("arg({}, {x}, {})\n", .{ index, buffer_data, buffer_len });
         var args = std.process.args();
+        _ = args.skip(); // Skip the first arg, which is just the soil invocation.
         for (0..@intCast(index)) |_| _ = args.skip();
         const the_arg = args.next().?;
         const unsigned_buffer_len: usize = @intCast(buffer_len);
