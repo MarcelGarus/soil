@@ -125,32 +125,17 @@ const Syscalls = struct {
         return @intCast(len);
     }
 
-    pub fn execute(_: *Vm, binary_data: i64, binary_len: i64) callconv(.C) void {
+    pub fn execute(vm: *Vm, binary_data: i64, binary_len: i64) callconv(.C) void {
         syscall_log.info("execute({x}, {})\n", .{ binary_data, binary_len });
-        std.log.err("TODO: implement execute\n", .{});
-        //   ; jmp .execute
-        //   mov rax, r11 ; binary.len
-        //   call malloc
-        //   mov [binary], rax
-        //   mov [binary.len], r11
-        //   add r10, rbp
-        // .copy_binary:
-        //   cmp r11, 0
-        //   je .clear_stack
-        //   mov bl, [r10]
-        //   mov [rax], bl
-        //   inc r10
-        //   inc rax
-        //   dec r11
-        //   jmp .copy_binary
-        // .clear_stack:
-        //   pop rax
-        //   cmp rax, label_after_call_to_jit
-        //   je .done_clearing_the_stack
-        //   jmp .clear_stack
-        // .done_clearing_the_stack:
-        //   call compile_binary
-        //   jmp run
+
+        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+        const alloc = gpa.allocator();
+        const binary = vm.memory[@intCast(binary_data)..][0..@intCast(binary_len)];
+        var new_vm = compile(alloc, binary, Syscalls) catch |e| {
+            std.log.err("Compilation failed: {}\n", .{e});
+            std.process.exit(1);
+        };
+        try new_vm.run();
     }
 };
 
