@@ -325,6 +325,10 @@ const Compiler = struct {
                                 switch (returns) {
                                     void => {},
                                     i64 => try machine_code.emit_mov_soil_rax(.a),
+                                    Vm.TwoValues => {
+                                        try machine_code.emit_mov_soil_rax(.a);
+                                        try machine_code.emit_mov_soil_rdx(.b);
+                                    },
                                     else => @compileError("syscalls can only return void or i64"),
                                 }
                             }

@@ -43,6 +43,14 @@
         //    // actually used.
         //    .lazy = false,
         //},
+        .@"raylib-zig" = .{
+            .url = "https://github.com/Not-Nik/raylib-zig/archive/devel.tar.gz",
+            .hash = "1220f7489d0946ca7ea7ffec154041cb862066491f789c2a5f823191ed325d4c37ef",
+        },
+        // .raygui = .{
+        //     .url = "https://github.com/raysan5/raygui/archive/4b3d94f5df6a5a2aa86286350f7e20c0ca35f516.tar.gz",
+        //     .hash = "122002d98ca255ec706ef8e5497b3723d6c6e163511761d116dac3aee87747d46cf1",
+        // },
     },
 
     // Specifies the set of files and directories that are included in this package.

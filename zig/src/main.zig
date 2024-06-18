@@ -6,12 +6,17 @@
 const std = @import("std");
 const Alloc = std.mem.Allocator;
 const ArrayList = std.ArrayList;
+const rl = @import("raylib");
 const compile = @import("compiler.zig").compile;
 const MachineCode = @import("machine_code.zig");
 const Vm = @import("vm.zig");
 const Reg = @import("reg.zig").Reg;
 
 const syscall_log = std.log.scoped(.syscall);
+
+const use_ui = true;
+const screenWidth = 800;
+const screenHeight = 450;
 
 pub const std_options = .{ .log_scope_levels = &[_]std.log.ScopeLevel{
     .{ .scope = .syscall, .level = .warn },
@@ -30,7 +35,26 @@ pub fn main() !void {
 
     const binary = try std.fs.cwd().readFileAlloc(alloc, binary_path, 1000000000);
     var vm = try compile(alloc, binary, Syscalls);
+
+    if (use_ui) {
+        rl.initWindow(screenWidth, screenHeight, "Hello, world!");
+        rl.setTargetFPS(60);
+    }
+
     try vm.run();
+
+    // Main game loop
+    while (!rl.windowShouldClose()) { // Detect window close button or ESC key
+        // Update
+
+        // Draw
+        rl.beginDrawing();
+        defer rl.endDrawing();
+        rl.clearBackground(rl.Color.white);
+        rl.drawText("Congrats! You created your first window!", 190, 200, 20, rl.Color.light_gray);
+    }
+
+    // rl.closeWindow();
 }
 
 const Syscalls = struct {
@@ -136,6 +160,33 @@ const Syscalls = struct {
             std.process.exit(1);
         };
         try new_vm.run();
+    }
+
+    pub fn ui_dimensions(_: *Vm) callconv(.C) Vm.TwoValues {
+        syscall_log.info("ui_dimensions()\n", .{});
+        return .{ .a = screenWidth, .b = screenHeight };
+    }
+
+    pub fn ui_render(vm: *Vm, buffer_data: i64, buffer_width: i64, buffer_height: i64) callconv(.C) void {
+        syscall_log.info("ui_render({}, {}, {})\n", .{ buffer_data, buffer_width, buffer_height });
+
+        rl.beginDrawing();
+        defer rl.endDrawing();
+        rl.clearBackground(rl.Color.white);
+
+        // const image = rl.Image.genColor(rl.Color.green);
+        // image.drawPixel(2, 2, rl.Color.white);
+        const data: usize = @intCast(buffer_data);
+        const width: usize = @intCast(buffer_width);
+        const height: usize = @intCast(buffer_height);
+        for (0..width) |x| {
+            for (0..height) |y| {
+                const r = vm.memory[data + 3 * (y * width + x) + 0];
+                const g = vm.memory[data + 3 * (y * width + x) + 1];
+                const b = vm.memory[data + 3 * (y * width + x) + 2];
+                rl.drawPixel(@intCast(x), @intCast(y), .{ .r = r, .g = g, .b = b, .a = 255 });
+            }
+        }
     }
 };
 
