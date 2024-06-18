@@ -298,6 +298,15 @@ const Compiler = struct {
                             try machine_code.emit_pop_soil(Reg.a);
                             try machine_code.emit_pop_soil(Reg.st);
                             try machine_code.emit_pop_soil(Reg.sp);
+
+                            // Move the return value into the correct registers.
+                            if (signature.return_type) |returns| {
+                                switch (returns) {
+                                    void => {},
+                                    i64 => try machine_code.emit_mov_soil_rax(.a),
+                                    else => @compileError("syscalls can only return void or i64"),
+                                }
+                            }
                         }
                     }
                 }
