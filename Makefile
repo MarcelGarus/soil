@@ -1,4 +1,4 @@
-all: assemble disassemble soil-asm soil-c
+all: assemble disassemble soil-asm soil-c soil-zig
 
 assemble: assemble.c
 	gcc assemble.c -o assemble
@@ -11,6 +11,9 @@ soil-asm: soil.s
 
 soil-c: soil.c
 	gcc soil.c -O3 -o soil-c
+
+soil-zig:
+	cd zig; zig build && cp zig-out/bin/soil-zig ../soil-zig
 
 run-hello:
 	cat hello.recipe | ./assemble | ./soil

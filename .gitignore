@@ -5,4 +5,8 @@ assemble
 soil-asm
 soil-c
 
+zig/.zig-cache
+zig/zig-cache
+zig/zig-out
+
 rust/target
