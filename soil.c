@@ -6,10 +6,10 @@
 #include <unistd.h>
 
 #define MEMORY_SIZE 1000000000
-#define TRACE_INSTRUCTIONS 0
+#define TRACE_INSTRUCTIONS 1
 #define TRACE_CALLS 0
 #define TRACE_CALL_ARGS 0
-#define TRACE_SYSCALLS 0
+#define TRACE_SYSCALLS 1
 
 void eprintf(const char* fmt, ...) {
   va_list args;
@@ -26,7 +26,7 @@ void panic(int exit_code, const char* fmt, ...) {
 }
 
 typedef uint8_t Byte;
-typedef uint64_t Word;
+typedef int64_t Word;
 
 Word reg[8]; // sp, st, a, b, c, d, e, f
 #define SP reg[0]
@@ -172,13 +172,15 @@ void dump_reg(void) {
 
 typedef Byte Reg; // 4 bits would actually be enough, but meh
 
+typedef union { double f; int64_t i; } fi;
+
 void run_single(void) {
   #define REG1 reg[byte_code[ip + 1] & 0x0f]
   #define REG2 reg[byte_code[ip + 1] >> 4]
 
   Byte opcode = byte_code[ip];
   switch (opcode) {
-    case 0x00: dump_and_panic("halted"); ip += 1; break; // nop
+    case 0x00: ip += 1; break; // nop
     case 0xe0: dump_and_panic("panicked"); return; // panic
     case 0xd0: REG1 = REG2; ip += 2; break; // move
     case 0xd1: REG1 = *(Word*)(byte_code + ip + 2); ip += 10; break; // movei
@@ -233,10 +235,43 @@ void run_single(void) {
     case 0xf4: ip += 2; syscall_handlers[byte_code[ip - 1]](); break; // syscall
     case 0xc0: ST = REG1 - REG2; ip += 2; break; // cmp
     case 0xc1: ST = ST == 0 ? 1 : 0; ip += 1; break; // isequal
-    case 0xc2: ST = (int64_t)ST < 0 ? 1 : 0; ip += 1; break; // isless
-    case 0xc3: ST = (int64_t)ST > 0 ? 1 : 0; ip += 1; break; // isgreater
-    case 0xc4: ST = (int64_t)ST <= 0 ? 1 : 0; ip += 1; break; // islessequal
-    case 0xc5: ST = (int64_t)ST >= 0 ? 1 : 0; ip += 1; break; // isgreaterequal
+    case 0xc2: ST = ST < 0 ? 1 : 0; ip += 1; break; // isless
+    case 0xc3: ST = ST > 0 ? 1 : 0; ip += 1; break; // isgreater
+    case 0xc4: ST = ST <= 0 ? 1 : 0; ip += 1; break; // islessequal
+    case 0xc5: ST = ST >= 0 ? 1 : 0; ip += 1; break; // isgreaterequal
+    case 0xc6: ST = ST != 0 ? 1 : 0; ip += 1; break; // isnotequal
+    case 0xc7: { // fisequal
+      fi fi = {.i = ST};
+      ST = fi.f == 0.0 ? 1 : 0; ip += 1; break;
+    }
+    case 0xc8: { // fisless
+      fi fi = {.i = ST};
+      ST = fi.f < 0.0 ? 1 : 0; ip += 1; break;
+    }
+    case 0xc9: { // fisgreater
+      fi fi = {.i = ST};
+      ST = fi.f > 0.0 ? 1 : 0; ip += 1; break;
+    }
+    case 0xca: { // fislessqual
+      fi fi = {.i = ST};
+      ST = fi.f <= 0.0 ? 1 : 0; ip += 1; break;
+    }
+    case 0xcb: { // fisgreaterequal
+      fi fi = {.i = ST};
+      ST = fi.f >= 0.0 ? 1 : 0; ip += 1; break;
+    }
+    case 0xcc: { // fisnotequal
+      fi fi = {.i = ST};
+      ST = fi.f != 0.0 ? 1 : 0; ip += 1; break;
+    }
+    case 0xcd: { // inttofloat
+      fi fi = {.f = (double)REG1};
+      REG1 = fi.i; ip += 2; break;
+    }
+    case 0xce: { // floattoint
+      fi fi = {.i = REG1};
+      REG1 = (int64_t)fi.f; ip += 2; break;
+    }
     case 0xa0: REG1 += REG2; ip += 2; break; // add
     case 0xa1: REG1 -= REG2; ip += 2; break; // sub
     case 0xa2: REG1 *= REG2; ip += 2; break; // mul
@@ -247,6 +282,31 @@ void run_single(void) {
     case 0xa4: { // rem
       if (REG2 == 0) dump_and_panic("rem by zero");
       REG1 %= REG2; ip += 2; break;
+    }
+    case 0xa5: {  // fadd
+      fi fi1 = {.i = REG1};
+      fi fi2 = {.i = REG2};
+      fi res = {.f = fi1.f + fi2.f};
+      REG1 = res.i; ip += 2; break;
+    }
+    case 0xa6: {  // fsub
+      fi fi1 = {.i = REG1};
+      fi fi2 = {.i = REG2};
+      fi res = {.f = fi1.f - fi2.f};
+      REG1 = res.i; ip += 2; break;
+    }
+    case 0xa7: {  // fmul
+      fi fi1 = {.i = REG1};
+      fi fi2 = {.i = REG2};
+      fi res = {.f = fi1.f * fi2.f};
+      REG1 = res.i; ip += 2; break;
+    }
+    case 0xa8: {  // fdiv
+      fi fi1 = {.i = REG1};
+      fi fi2 = {.i = REG2};
+      if (fi2.f == 0.0) dump_and_panic("fdiv by zero");
+      fi res = {.f = fi1.f / fi2.f};
+      REG1 = res.i; ip += 2; break;
     }
     case 0xb0: REG1 &= REG2; ip += 2; break; // and
     case 0xb1: REG1 |= REG2; ip += 2; break; // or

@@ -12,7 +12,7 @@ soil-asm: soil.s
 soil-c: soil.c
 	gcc soil.c -O3 -o soil-c
 
-soil-zig:
+soil-zig: zig/src/*
 	cd zig; zig build && cp zig-out/bin/soil-zig ../soil-zig
 
 run-hello:

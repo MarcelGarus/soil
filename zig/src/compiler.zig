@@ -363,6 +363,61 @@ const Compiler = struct {
                 try machine_code.emit_not_soil(.st); // not r9
                 try machine_code.emit_shr_r9_63(); // shr r9, 63
             },
+            0xc6 => { // isnotequal
+                try machine_code.emit_test_r9_r9(); // test r9, r9
+                try machine_code.emit_setne_r9b(); // setne r9
+                try machine_code.emit_and_soil_0xff(.st); // and r9, 0fh
+            },
+            0xc7 => { // fisequal
+                try machine_code.emit_shl_r9_1(); // shl r9, 1
+                try machine_code.emit_test_r9_r9(); // test r9, r9
+                try machine_code.emit_sete_r9b(); // sete r9
+                try machine_code.emit_and_soil_0xff(.st); // and r9, 0fh
+            },
+            0xc8 => { // fisless
+                try machine_code.emit_vmovq_xmm0_soil(.st); // vmovq xmm0, r9
+                try machine_code.emit_vxorpd_xmm1_xmm1_xmm1(); // vxorpd xmm1, xmm1, xmm1
+                try machine_code.emit_vucomisd_xmm1_xmm0(); // vucomisd xmm1, xmm0
+                try machine_code.emit_seta_r9b(); // seta r9b
+                try machine_code.emit_and_soil_0xff(.st); // and r9, 0fh
+            },
+            0xc9 => { // fisgreater
+                try machine_code.emit_vmovq_xmm0_soil(.st); // vmovq xmm0, r9
+                try machine_code.emit_vxorpd_xmm1_xmm1_xmm1(); // vxorpd xmm1, xmm1, xmm1
+                try machine_code.emit_vucomisd_xmm0_xmm1(); // vucomisd xmm0, xmm1
+                try machine_code.emit_seta_r9b(); // seta r9b
+                try machine_code.emit_and_soil_0xff(.st); // and r9, 0fh
+            },
+            0xca => { // fislessequal
+                try machine_code.emit_vmovq_xmm0_soil(.st); // vmovq xmm0, r9
+                try machine_code.emit_vxorpd_xmm1_xmm1_xmm1(); // vxorpd xmm1, xmm1, xmm1
+                try machine_code.emit_vucomisd_xmm1_xmm0(); // vucomisd xmm1, xmm0
+                try machine_code.emit_setae_r9b(); // setae r9b
+                try machine_code.emit_and_soil_0xff(.st); // and r9, 0fh
+            },
+            0xcb => { // fisgreaterequal
+                try machine_code.emit_vmovq_xmm0_soil(.st); // vmovq xmm0, r9
+                try machine_code.emit_vxorpd_xmm1_xmm1_xmm1(); // vxorpd xmm1, xmm1, xmm1
+                try machine_code.emit_vucomisd_xmm0_xmm1(); // vucomisd xmm0, xmm1
+                try machine_code.emit_setae_r9b(); // setae r9b
+                try machine_code.emit_and_soil_0xff(.st); // and r9, 0fh
+            },
+            0xcc => { // fisnotequal
+                try machine_code.emit_shl_r9_1(); // shl r9, 1
+                try machine_code.emit_test_r9_r9(); // test r9, r9
+                try machine_code.emit_setne_r9b(); // setne r9b
+                try machine_code.emit_and_soil_0xff(.st); // and r9, 0fh
+            },
+            0xcd => { // inttofloat
+                const reg = try self.parse_reg();
+                try machine_code.emit_vcvtsi2sd_xmm0_xmm0_soil(reg); // vcvtsi2sd xmm0, xmm0, <reg>
+                try machine_code.emit_vmovq_soil_xmm0(reg); // vmovq <reg>, xmm0
+            },
+            0xce => { // floattoint
+                const reg = try self.parse_reg();
+                try machine_code.emit_vmovq_xmm0_soil(reg); // vmovq xmm0, <reg>
+                try machine_code.emit_vcvttsd2si_soil_xmm0(reg); // vcvttsd2si <reg>, xmm0
+            },
             0xa0 => { // add
                 const regs = try self.parse_regs();
                 try machine_code.emit_add_soil_soil(regs.a, regs.b); // add <to>, <from>
@@ -390,6 +445,34 @@ const Compiler = struct {
                 try machine_code.emit_mov_rax_soil(regs.a); // mov rax, <to>
                 try machine_code.emit_idiv_soil(regs.b); // idiv <from>
                 try machine_code.emit_mov_soil_rdx(regs.a); // mov <to>, rdx
+            },
+            0xa5 => { // fadd
+                const regs = try self.parse_regs();
+                try machine_code.emit_vmovq_xmm0_soil(regs.a); // vmovq xmm0, <to>
+                try machine_code.emit_vmovq_xmm1_soil(regs.b); // vmovq xmm1, <from>
+                try machine_code.emit_vaddsd_xmm0_xmm0_xmm1(); // vaddsd xmm0, xmm0, xmm1
+                try machine_code.emit_vmovq_soil_xmm0(regs.a); // vmovq <to>, xmm0
+            },
+            0xa6 => { // fsub
+                const regs = try self.parse_regs();
+                try machine_code.emit_vmovq_xmm0_soil(regs.a); // vmovq xmm0, <to>
+                try machine_code.emit_vmovq_xmm1_soil(regs.b); // vmovq xmm1, <from>
+                try machine_code.emit_vsubsd_xmm0_xmm0_xmm1(); // vsubsd xmm0, xmm0, xmm1
+                try machine_code.emit_vmovq_soil_xmm0(regs.a); // vmovq <to>, xmm0
+            },
+            0xa7 => { // fmul
+                const regs = try self.parse_regs();
+                try machine_code.emit_vmovq_xmm0_soil(regs.a); // vmovq xmm0, <to>
+                try machine_code.emit_vmovq_xmm1_soil(regs.b); // vmovq xmm1, <from>
+                try machine_code.emit_vmulsd_xmm0_xmm0_xmm1(); // vmulsd xmm0, xmm0, xmm1
+                try machine_code.emit_vmovq_soil_xmm0(regs.a); // vmovq <to>, xmm0
+            },
+            0xa8 => { // fdiv
+                const regs = try self.parse_regs();
+                try machine_code.emit_vmovq_xmm0_soil(regs.a); // vmovq xmm0, <to>
+                try machine_code.emit_vmovq_xmm1_soil(regs.b); // vmovq xmm1, <from>
+                try machine_code.emit_vdivsd_xmm0_xmm0_xmm1(); // vdivsd xmm0, xmm0, xmm1
+                try machine_code.emit_vmovq_soil_xmm0(regs.a); // vmovq <to>, xmm0
             },
             0xb0 => { // and
                 const regs = try self.parse_regs();

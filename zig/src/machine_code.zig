@@ -21,7 +21,7 @@ pub fn init(alloc: Alloc) !Self {
         .len = 0,
         .patches = ArrayList(Patch).init(alloc),
     };
-    if (false) {
+    if (true) {
         try machine_code.emit_infinite_loop();
     }
     return machine_code;
@@ -324,11 +324,28 @@ pub fn emit_push_soil(self: *Self, a: Reg) !void { // push <a>
 pub fn emit_ret(self: *Self) !void { // ret
     try self.emit_byte(0xc3);
 }
+pub fn emit_shl_r9_1(self: *Self) !void { // shl r9, 1
+    try self.emit_byte(0x49);
+    try self.emit_byte(0xd1);
+    try self.emit_byte(0xe1);
+}
 pub fn emit_shr_r9_63(self: *Self) !void { // shr r9, 63
     try self.emit_byte(0x49);
     try self.emit_byte(0xc1);
     try self.emit_byte(0xe9);
     try self.emit_byte(0x3f);
+}
+pub fn emit_seta_r9b(self: *Self) !void { // seta r9b
+    try self.emit_byte(0x41);
+    try self.emit_byte(0x0f);
+    try self.emit_byte(0x97);
+    try self.emit_byte(0xc1);
+}
+pub fn emit_setae_r9b(self: *Self) !void { // setae r9b
+    try self.emit_byte(0x41);
+    try self.emit_byte(0x0f);
+    try self.emit_byte(0x93);
+    try self.emit_byte(0xc1);
 }
 pub fn emit_sete_r9b(self: *Self) !void { // sete r9b
     try self.emit_byte(0x41);
@@ -346,6 +363,12 @@ pub fn emit_setle_r9b(self: *Self) !void { // setle r9b
     try self.emit_byte(0x41);
     try self.emit_byte(0x0f);
     try self.emit_byte(0x9e);
+    try self.emit_byte(0xc1);
+}
+pub fn emit_setne_r9b(self: *Self) !void { // setne r9b
+    try self.emit_byte(0x41);
+    try self.emit_byte(0x0f);
+    try self.emit_byte(0x95);
     try self.emit_byte(0xc1);
 }
 pub fn emit_sub_soil_soil(self: *Self, a: Reg, b: Reg) !void { // sub <a>, <b>
@@ -368,6 +391,83 @@ pub fn emit_sub_rsp_8(self: *Self) !void { // sub rsp, 8
 pub fn emit_test_r9_r9(self: *Self) !void { // test r9, r9
     try self.emit_byte(0x4d);
     try self.emit_byte(0x85);
+    try self.emit_byte(0xc9);
+}
+pub fn emit_vaddsd_xmm0_xmm0_xmm1(self: *Self) !void { // vaddsd xmm0, xmm0, xmm1
+    try self.emit_byte(0xc5);
+    try self.emit_byte(0xfb);
+    try self.emit_byte(0x58);
+    try self.emit_byte(0xc1);
+}
+pub fn emit_vcvtsi2sd_xmm0_xmm0_soil(self: *Self, a: Reg) !void { // vcvtsi2sd xmm0, xmm0, <a>
+    try self.emit_byte(0xc4);
+    try self.emit_byte(0xc1);
+    try self.emit_byte(0xfb);
+    try self.emit_byte(0x2a);
+    try self.emit_byte(0xc0 + a.to_byte());
+}
+pub fn emit_vcvttsd2si_soil_xmm0(self: *Self, a: Reg) !void { // vcvttsd2si <a>, xmm0
+    try self.emit_byte(0xc4);
+    try self.emit_byte(0x61);
+    try self.emit_byte(0xfb);
+    try self.emit_byte(0x2d);
+    try self.emit_byte(0xc0 + 8 * a.to_byte());
+}
+pub fn emit_vdivsd_xmm0_xmm0_xmm1(self: *Self) !void { // vdivsd xmm0, xmm0, xmm1
+    try self.emit_byte(0xc5);
+    try self.emit_byte(0xfb);
+    try self.emit_byte(0x5e);
+    try self.emit_byte(0xc1);
+}
+pub fn emit_vmovq_soil_xmm0(self: *Self, a: Reg) !void { // vmovq <a>, xmm0
+    try self.emit_byte(0xc4);
+    try self.emit_byte(0xc1);
+    try self.emit_byte(0xf9);
+    try self.emit_byte(0x7e);
+    try self.emit_byte(0xc0 + a.to_byte());
+}
+pub fn emit_vmovq_xmm0_soil(self: *Self, a: Reg) !void { // vmovq xmm0, <a>
+    try self.emit_byte(0xc4);
+    try self.emit_byte(0xc1);
+    try self.emit_byte(0xf9);
+    try self.emit_byte(0x6e);
+    try self.emit_byte(0xc0 + a.to_byte());
+}
+pub fn emit_vmovq_xmm1_soil(self: *Self, a: Reg) !void { // vmovq xmm1, <a>
+    try self.emit_byte(0xc4);
+    try self.emit_byte(0xc1);
+    try self.emit_byte(0xf9);
+    try self.emit_byte(0x6e);
+    try self.emit_byte(0xc8 + a.to_byte());
+}
+pub fn emit_vmulsd_xmm0_xmm0_xmm1(self: *Self) !void { // vmulsd xmm0, xmm0, xmm1
+    try self.emit_byte(0xc5);
+    try self.emit_byte(0xfb);
+    try self.emit_byte(0x59);
+    try self.emit_byte(0xc1);
+}
+pub fn emit_vsubsd_xmm0_xmm0_xmm1(self: *Self) !void { // vsubsd xmm0, xmm0, xmm1
+    try self.emit_byte(0xc5);
+    try self.emit_byte(0xfb);
+    try self.emit_byte(0x5c);
+    try self.emit_byte(0xc1);
+}
+pub fn emit_vucomisd_xmm0_xmm1(self: *Self) !void { // vucomisd xmm0, xmm1
+    try self.emit_byte(0xc5);
+    try self.emit_byte(0xf9);
+    try self.emit_byte(0x2e);
+    try self.emit_byte(0xc1);
+}
+pub fn emit_vucomisd_xmm1_xmm0(self: *Self) !void { // vucomisd xmm1, xmm0
+    try self.emit_byte(0xc5);
+    try self.emit_byte(0xf9);
+    try self.emit_byte(0x2e);
+    try self.emit_byte(0xc8);
+}
+pub fn emit_vxorpd_xmm1_xmm1_xmm1(self: *Self) !void { // vxorpd xmm1, xmm1, xmm1
+    try self.emit_byte(0xc5);
+    try self.emit_byte(0xf1);
+    try self.emit_byte(0x57);
     try self.emit_byte(0xc9);
 }
 pub fn emit_xor_rdx_rdx(self: *Self) !void { // xor rdx, rdx
