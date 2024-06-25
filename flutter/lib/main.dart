@@ -4,6 +4,7 @@ import 'package:soil_vm/soil_vm.dart';
 import 'package:supernova_flutter/supernova_flutter.dart' hide Bytes;
 
 import 'vm_state.dart';
+import 'widgets/instructions.dart';
 import 'widgets/registers.dart';
 import 'widgets/toolbar.dart';
 
@@ -160,9 +161,15 @@ class _VMWidget extends HookWidget {
         const SizedBox(height: 16),
         Text('Elapsed time: ${state.elapsedTime}'),
         const SizedBox(height: 16),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: RegistersWidget(state.vm),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            RegistersWidget(state.vm),
+            const SizedBox(width: 16),
+            Expanded(
+              child: SizedBox(height: 256, child: InstructionsWidget(state)),
+            ),
+          ],
         ),
         const SizedBox(height: 16),
         Expanded(
@@ -212,6 +219,7 @@ class InstructionWidget extends StatelessWidget {
       child: Text(
         instruction.toString(),
         style: monospaceTextStyle,
+        overflow: TextOverflow.visible,
       ),
     );
   }

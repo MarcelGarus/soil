@@ -19,14 +19,15 @@ class Toolbar extends StatelessWidget {
             tooltip: 'Pause',
           )
         else
-          const ButtonSegment(
+          ButtonSegment(
             value: _ToolbarAction.play,
-            icon: Icon(Symbols.play_arrow),
+            enabled: state.vm.status.isRunning,
+            icon: const Icon(Symbols.play_arrow),
             tooltip: 'Continue',
           ),
         ButtonSegment(
           value: _ToolbarAction.step,
-          enabled: !state.isRunning,
+          enabled: !state.isRunning && state.vm.status.isRunning,
           tooltip: 'Run Single Instruction',
           icon: const Icon(Symbols.step),
         ),
