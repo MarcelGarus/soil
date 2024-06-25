@@ -14,9 +14,9 @@ const Reg = @import("reg.zig").Reg;
 
 const syscall_log = std.log.scoped(.syscall);
 
-const use_ui = true;
-const screenWidth = 800;
-const screenHeight = 450;
+const use_ui = false;
+const ui_size = .{ .width = 160, .height = 90 };
+const ui_scale = 5.0;
 
 pub const std_options = .{ .log_scope_levels = &[_]std.log.ScopeLevel{
     .{ .scope = .syscall, .level = .warn },
@@ -37,7 +37,7 @@ pub fn main() !void {
     var vm = try compile(alloc, binary, Syscalls);
 
     if (use_ui) {
-        rl.initWindow(screenWidth, screenHeight, "Hello, world!");
+        rl.initWindow(ui_size.width * ui_scale, ui_size.height * ui_scale, "Hello, world!");
         rl.setTargetFPS(60);
     }
 
@@ -164,29 +164,32 @@ const Syscalls = struct {
 
     pub fn ui_dimensions(_: *Vm) callconv(.C) Vm.TwoValues {
         syscall_log.info("ui_dimensions()\n", .{});
-        return .{ .a = screenWidth, .b = screenHeight };
+        return .{ .a = ui_size.width, .b = ui_size.height };
     }
 
     pub fn ui_render(vm: *Vm, buffer_data: i64, buffer_width: i64, buffer_height: i64) callconv(.C) void {
         syscall_log.info("ui_render({}, {}, {})\n", .{ buffer_data, buffer_width, buffer_height });
 
-        rl.beginDrawing();
-        defer rl.endDrawing();
-        rl.clearBackground(rl.Color.white);
-
-        // const image = rl.Image.genColor(rl.Color.green);
-        // image.drawPixel(2, 2, rl.Color.white);
         const data: usize = @intCast(buffer_data);
         const width: usize = @intCast(buffer_width);
         const height: usize = @intCast(buffer_height);
+
+        rl.beginDrawing();
+        defer rl.endDrawing();
+
+        rl.clearBackground(rl.Color.white);
+
+        var image = rl.Image.genColor(ui_size.width, ui_size.height, rl.Color.black);
         for (0..width) |x| {
             for (0..height) |y| {
                 const r = vm.memory[data + 3 * (y * width + x) + 0];
                 const g = vm.memory[data + 3 * (y * width + x) + 1];
                 const b = vm.memory[data + 3 * (y * width + x) + 2];
-                rl.drawPixel(@intCast(x), @intCast(y), .{ .r = r, .g = g, .b = b, .a = 255 });
+                rl.imageDrawPixel(&image, @intCast(x), @intCast(y), .{ .r = r, .g = g, .b = b, .a = 255 });
             }
         }
+        const texture = rl.loadTextureFromImage(image);
+        rl.drawTextureEx(texture, .{ .x = 0, .y = 0 }, 0, ui_scale, rl.Color.white);
     }
 };
 
