@@ -240,35 +240,41 @@ void run_single(void) {
     case 0xc4: ST = ST <= 0 ? 1 : 0; ip += 1; break; // islessequal
     case 0xc5: ST = ST >= 0 ? 1 : 0; ip += 1; break; // isgreaterequal
     case 0xc6: ST = ST != 0 ? 1 : 0; ip += 1; break; // isnotequal
-    case 0xc7: { // fisequal
+    case 0xc7: { // fcmp
+      fi fi1 = {.i = REG1};
+      fi fi2 = {.i = REG2};
+      fi res = {.f = fi1.f - fi2.f};
+      ST = res.i; ip += 2; break;
+    }
+    case 0xc8: { // fisequal
       fi fi = {.i = ST};
       ST = fi.f == 0.0 ? 1 : 0; ip += 1; break;
     }
-    case 0xc8: { // fisless
+    case 0xc9: { // fisless
       fi fi = {.i = ST};
       ST = fi.f < 0.0 ? 1 : 0; ip += 1; break;
     }
-    case 0xc9: { // fisgreater
+    case 0xca: { // fisgreater
       fi fi = {.i = ST};
       ST = fi.f > 0.0 ? 1 : 0; ip += 1; break;
     }
-    case 0xca: { // fislessqual
+    case 0xcb: { // fislessqual
       fi fi = {.i = ST};
       ST = fi.f <= 0.0 ? 1 : 0; ip += 1; break;
     }
-    case 0xcb: { // fisgreaterequal
+    case 0xcc: { // fisgreaterequal
       fi fi = {.i = ST};
       ST = fi.f >= 0.0 ? 1 : 0; ip += 1; break;
     }
-    case 0xcc: { // fisnotequal
+    case 0xcd: { // fisnotequal
       fi fi = {.i = ST};
       ST = fi.f != 0.0 ? 1 : 0; ip += 1; break;
     }
-    case 0xcd: { // inttofloat
+    case 0xce: { // inttofloat
       fi fi = {.f = (double)REG1};
       REG1 = fi.i; ip += 2; break;
     }
-    case 0xce: { // floattoint
+    case 0xcf: { // floattoint
       fi fi = {.i = REG1};
       REG1 = (int64_t)fi.f; ip += 2; break;
     }

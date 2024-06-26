@@ -87,14 +87,15 @@ The following instructions are available:
 | c4     | islessequal     | -             | -            | If `st` is 0 or less, sets `st` to 1, otherwise to 0.                                                 |
 | c5     | isgreaterequal  | -             | -            | If `st` is 0 or greater, sets `st` to 1, otherwise to 0.                                              |
 | c6     | isnotequal      | -             | -            | If `st` is 0, sets `st` to 0, otherwise to 1.                                                         |
-| c7     | fisequal        | -             | -            | If `st` is 0, sets `st` to 1, otherwise to 0.                                                         |
-| c8     | fisless         | -             | -            | If `st` is less than 0, sets `st` to 1, otherwise to 0.                                               |
-| c9     | fisgreater      | -             | -            | If `st` is greater than 0, sets `st` to 1, otherwise to 0.                                            |
-| ca     | fislessequal    | -             | -            | If `st` is 0 or less, sets `st` to 1, otherwise to 0.                                                 |
-| cb     | fisgreaterequal | -             | -            | If `st` is 0 or greater, sets `st` to 1, otherwise to 0.                                              |
-| cc     | fisnotequal     | -             | -            | If `st` is 0, sets `st` to 0, otherwise to 1.                                                         |
-| cd     | inttofloat      | reg: reg      | -            | Interprets `reg` as an int and sets it to a float of about the same value. TODO: specify edge cases   |
-| ce     | floattoint      | reg: reg      | -            | Interprets `reg` as a float and sets it to its int, rounded down. TODO: specify edge cases            |
+| c7     | fcmp            | left: reg     | right: reg   | Saves `left` - `right` in `st`.                                                                       |
+| c8     | fisequal        | -             | -            | If `st` is 0, sets `st` to 1, otherwise to 0.                                                         |
+| c9     | fisless         | -             | -            | If `st` is less than 0, sets `st` to 1, otherwise to 0.                                               |
+| ca     | fisgreater      | -             | -            | If `st` is greater than 0, sets `st` to 1, otherwise to 0.                                            |
+| cb     | fislessequal    | -             | -            | If `st` is 0 or less, sets `st` to 1, otherwise to 0.                                                 |
+| cc     | fisgreaterequal | -             | -            | If `st` is 0 or greater, sets `st` to 1, otherwise to 0.                                              |
+| cd     | fisnotequal     | -             | -            | If `st` is 0, sets `st` to 0, otherwise to 1.                                                         |
+| ce     | inttofloat      | reg: reg      | -            | Interprets `reg` as an int and sets it to a float of about the same value. TODO: specify edge cases   |
+| cf     | floattoint      | reg: reg      | -            | Interprets `reg` as a float and sets it to its int, rounded down. TODO: specify edge cases            |
 | a0     | add             | to: reg       | from: reg    | Adds `from` to `to`.                                                                                  |
 | a1     | sub             | to: reg       | from: reg    | Subtracts `from` from `to`.                                                                           |
 | a2     | mul             | to: reg       | from: reg    | Multiplies `from` and `to`. Saves the result in `to`.                                                 |
@@ -112,12 +113,12 @@ The following instructions are available:
 To make memorization easier, the first characters of the instruction hex opcodes describe what kind of instruction it is:
 
 - 00: nop
-- a*: arithmetic
-- b*: binary
-- c*: comparisons / conversions
-- d*: data operations
-- e*: error
-- f*: control flow
+- a\*: arithmetic
+- b\*: binary
+- c\*: comparisons / conversions
+- d\*: data operations
+- e\*: error
+- f\*: control flow
 
 ## Binaries
 
