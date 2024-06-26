@@ -21,7 +21,7 @@ pub fn init(alloc: Alloc) !Self {
         .len = 0,
         .patches = ArrayList(Patch).init(alloc),
     };
-    if (true) {
+    if (false) {
         try machine_code.emit_infinite_loop();
     }
     return machine_code;
