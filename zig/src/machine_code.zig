@@ -410,7 +410,7 @@ pub fn emit_vcvttsd2si_soil_xmm0(self: *Self, a: Reg) !void { // vcvttsd2si <a>,
     try self.emit_byte(0xc4);
     try self.emit_byte(0x61);
     try self.emit_byte(0xfb);
-    try self.emit_byte(0x2d);
+    try self.emit_byte(0x2c);
     try self.emit_byte(0xc0 + 8 * a.to_byte());
 }
 pub fn emit_vdivsd_xmm0_xmm0_xmm1(self: *Self) !void { // vdivsd xmm0, xmm0, xmm1
