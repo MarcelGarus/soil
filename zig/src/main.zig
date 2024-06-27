@@ -36,19 +36,6 @@ pub fn main() !void {
     var vm = try compile(alloc, binary, Syscalls);
 
     try vm.run();
-
-    // Main game loop
-    while (!rl.windowShouldClose()) { // Detect window close button or ESC key
-        // Update
-
-        // Draw
-        rl.beginDrawing();
-        defer rl.endDrawing();
-        rl.clearBackground(rl.Color.white);
-        rl.drawText("Congrats! You created your first window!", 190, 200, 20, rl.Color.light_gray);
-    }
-
-    // rl.closeWindow();
 }
 
 var ui_inited = false;
@@ -62,6 +49,9 @@ fn init_ui() void {
 const Syscalls = struct {
     pub fn exit(_: *Vm, status: i64) callconv(.C) void {
         syscall_log.info("exit({})\n", .{status});
+        if (ui_inited) {
+            rl.closeWindow();
+        }
         std.process.exit(@intCast(status));
     }
 
