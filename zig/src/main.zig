@@ -14,9 +14,8 @@ const Reg = @import("reg.zig").Reg;
 
 const syscall_log = std.log.scoped(.syscall);
 
-const use_ui = false;
-const ui_size = .{ .width = 160, .height = 90 };
-const ui_scale = 5.0;
+const ui_size = .{ .width = 480, .height = 360 };
+const ui_scale = 2.0;
 
 pub const std_options = .{ .log_scope_levels = &[_]std.log.ScopeLevel{
     .{ .scope = .syscall, .level = .warn },
@@ -36,11 +35,6 @@ pub fn main() !void {
     const binary = try std.fs.cwd().readFileAlloc(alloc, binary_path, 1000000000);
     var vm = try compile(alloc, binary, Syscalls);
 
-    if (use_ui) {
-        rl.initWindow(ui_size.width * ui_scale, ui_size.height * ui_scale, "Hello, world!");
-        rl.setTargetFPS(60);
-    }
-
     try vm.run();
 
     // Main game loop
@@ -55,6 +49,14 @@ pub fn main() !void {
     }
 
     // rl.closeWindow();
+}
+
+var ui_inited = false;
+fn init_ui() void {
+    if (ui_inited) return;
+    ui_inited = true;
+    rl.initWindow(ui_size.width * ui_scale, ui_size.height * ui_scale, "Soil VM");
+    rl.setTargetFPS(60);
 }
 
 const Syscalls = struct {
@@ -164,11 +166,13 @@ const Syscalls = struct {
 
     pub fn ui_dimensions(_: *Vm) callconv(.C) Vm.TwoValues {
         syscall_log.info("ui_dimensions()\n", .{});
+        init_ui();
         return .{ .a = ui_size.width, .b = ui_size.height };
     }
 
     pub fn ui_render(vm: *Vm, buffer_data: i64, buffer_width: i64, buffer_height: i64) callconv(.C) void {
         syscall_log.info("ui_render({}, {}, {})\n", .{ buffer_data, buffer_width, buffer_height });
+        init_ui();
 
         const data: usize = @intCast(buffer_data);
         const width: usize = @intCast(buffer_width);
