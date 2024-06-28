@@ -1,7 +1,7 @@
 const std = @import("std");
 const Alloc = std.mem.Allocator;
 
-pub const memory_size = 200000000;
+pub const memory_size = 1000000000;
 
 byte_code: []u8,
 machine_code: []align(std.mem.page_size) u8,
