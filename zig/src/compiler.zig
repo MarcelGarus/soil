@@ -533,13 +533,15 @@ fn intToString(comptime int: u32, comptime buf: []u8) ![]const u8 {
     return try std.fmt.bufPrint(buf, "{}", .{int});
 }
 
-fn panic_vm(vm: *Vm, stack_pointer: [:0]usize) void {
+fn panic_vm(vm: *Vm, stack_pointer: *usize) void {
     std.debug.print("\nOh no! The program panicked.\n", .{});
 
     var i: usize = 0;
-    while (stack_pointer[i] != 0) : (i += 1) {
+    while (true) : (i += 1) {
+        const stack_entry: *usize = @ptrFromInt(@intFromPtr(stack_pointer) + 8 * i);
+        if (stack_entry.* == 0) break;
         const size_of_call_instruction = 5;
-        const machine_code_absolute = stack_pointer[i] - size_of_call_instruction;
+        const machine_code_absolute = stack_entry.* - size_of_call_instruction;
         if (machine_code_absolute < @intFromPtr(vm.machine_code.ptr)) {
             std.debug.print("{x:10} <Zig code>", .{machine_code_absolute});
             continue;
