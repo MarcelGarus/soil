@@ -185,6 +185,13 @@ const Syscalls = struct {
         const texture = rl.loadTextureFromImage(image);
         rl.drawTextureEx(texture, .{ .x = 0, .y = 0 }, 0, ui_scale, rl.Color.white);
     }
+
+    pub fn get_key_pressed(_: *Vm) callconv(.C) i64 {
+        syscall_log.info("get_key_pressed()\n", .{});
+        init_ui();
+
+        return @intFromEnum(rl.getKeyPressed());
+    }
 };
 
 const PATH_MAX = std.os.linux.PATH_MAX;
