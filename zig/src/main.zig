@@ -87,8 +87,8 @@ const Syscalls = struct {
     pub fn open_writing(vm: *Vm, filename_data: i64, filename_len: i64) callconv(.C) i64 {
         syscall_log.info("open_writing({x}, {})\n", .{ filename_data, filename_len });
         const filename = vm.memory[@intCast(filename_data)..][0..@intCast(filename_len)];
-        const flags = .{ .ACCMODE = .WRONLY, .TRUNC = true };
-        const fd = std.os.linux.open(&(toCPath(filename) catch unreachable), flags, 0);
+        const flags = .{ .ACCMODE = .WRONLY, .TRUNC = true, .CREAT = true };
+        const fd = std.os.linux.open(&(toCPath(filename) catch unreachable), flags, 0o666);
         return @bitCast(fd);
     }
 
