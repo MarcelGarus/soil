@@ -66,3 +66,6 @@ or a b
 and a b
 xor a b
 not a
+
+moveib a 0
+syscall 0
