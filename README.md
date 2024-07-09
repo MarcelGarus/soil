@@ -66,6 +66,8 @@ The following instructions are available:
 | ------ | --------------- | ------------- | ------------ | ----------------------------------------------------------------------------------------------------- |
 | 00     | nop             | -             | -            | Does nothing.                                                                                         |
 | e0     | panic           | -             | -            | Panics.                                                                                               |
+| e1     | trystart        | catch: word   | -            | If a panic occurs, catches it, resets `sp`, and jumps to the `catch` address.                         |
+| e2     | tryend          |               | -            | Ends a scope started by `trystart`.                                                                   |
 | d0     | move            | to: reg       | from: reg    | Sets `to` to `from`.                                                                                  |
 | d1     | movei           | to: reg       | value: word  | Sets `to` to `value`.                                                                                 |
 | d2     | moveib          | to: reg       | value: byte  | Sets `to` to `value`, zeroing the upper bits.                                                         |

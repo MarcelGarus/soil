@@ -32,10 +32,13 @@ pub fn compile(alloc: Alloc, binary: []u8, syscalls: type) !Vm {
     var vm = Vm{
         .byte_code = &[_]u8{},
         .machine_code = &[_]u8{},
+        .machine_code_ptr = @ptrFromInt(1),
         .byte_to_machine_code = &[_]usize{},
         .machine_to_byte_code = &[_]usize{},
         .memory = try alloc.alloc(u8, Vm.memory_size),
         .labels = &[_]LabelAndOffset{},
+        .try_stack = try alloc.alloc(Vm.TryScope, 1024),
+        .try_stack_len = 0,
     };
 
     var compiler = Compiler{
@@ -57,6 +60,7 @@ pub fn compile(alloc: Alloc, binary: []u8, syscalls: type) !Vm {
                 const compiled = try compiler.compile_byte_code(section_len, syscalls);
                 vm.byte_code = byte_code;
                 vm.machine_code = compiled.machine_code;
+                vm.machine_code_ptr = compiled.machine_code.ptr;
                 vm.byte_to_machine_code = compiled.byte_to_machine_code;
                 vm.machine_to_byte_code = compiled.machine_to_byte_code;
             },
@@ -139,10 +143,19 @@ const Compiler = struct {
         }
 
         for (machine_code.patches.items) |patch| {
-            const base: i32 = @intCast(patch.where + 4); // relative to the end of the jump/call instruction
-            const target: i32 = @intCast(byte_to_machine_code.items[patch.target]);
-            const relative = target - base;
-            std.mem.writeInt(i32, machine_code.buffer[patch.where..][0..4], relative, .little);
+            switch (patch.target) {
+                .absolute => |ab| {
+                    var target: i32 = @intCast(byte_to_machine_code.items[ab]);
+                    target += @intCast(@intFromPtr(machine_code.buffer.ptr));
+                    std.mem.writeInt(i32, machine_code.buffer[patch.where..][0..4], target, .little);
+                },
+                .relative => |rel| {
+                    const base: i32 = @intCast(patch.where + 4); // relative to the end of the jump/call instruction
+                    const target: i32 = @intCast(byte_to_machine_code.items[rel]);
+                    const relative = target - base;
+                    std.mem.writeInt(i32, machine_code.buffer[patch.where..][0..4], relative, .little);
+                },
+            }
         }
 
         return .{
@@ -156,10 +169,44 @@ const Compiler = struct {
         switch (opcode) {
             0x00 => {}, // nop
             0xe0 => { // panic
-                try machine_code.emit_mov_rdi_rbx(); // mov rdi, rbx (VM)
-                try machine_code.emit_mov_rsi_rsp(); // mov rsi, rsp (stack pointer)
-                try machine_code.emit_and_rsp_0xfffffffffffffff0(); // Align the stack to 16 bytes.
-                try machine_code.emit_call_comptime(@intFromPtr(&panic_vm)); // call panic_vm
+                try machine_code.emit_mov_rcx_mem_of_rbx_plus_byte(@offsetOf(Vm, "try_stack_len")); // mov rcx, [rbx + ...] // load try_stack_len
+                try machine_code.emit_cmp_rcx_0(); // cmp rcx, 0
+                try machine_code.emit_jne_by_offset(15); // jne --------------------------------------+
+                try machine_code.emit_mov_rdi_rbx(); // mov rdi, rbx (VM)                             | (3 bytes)
+                try machine_code.emit_mov_rsi_rsp(); // mov rsi, rsp (stack pointer)                  | (3 bytes)
+                try machine_code.emit_and_rsp_0xfffffffffffffff0(); // Align the stack to 16 bytes.   | (4 bytes)
+                try machine_code.emit_call_comptime(@intFromPtr(&panic_vm)); // call panic_vm  | (5 bytes)
+                // jump target <----------------------------------------------------------------------+
+                try machine_code.emit_dec_rcx(); // dec rcx
+                try machine_code.emit_mov_mem_of_rbx_plus_byte_rcx(@offsetOf(Vm, "try_stack_len")); // mov [rbx + ...], rcx // store try_stack_len
+                try machine_code.emit_mov_rax_rcx(); // mov rax, rcx
+                try machine_code.emit_imul_rax_24(); // imul rax, 24
+                try machine_code.emit_add_rax_mem_of_rbx_plus_byte(@offsetOf(Vm, "try_stack")); // add rax, [rbx + ...]
+                try machine_code.emit_mov_rsp_mem_of_rax(); // mov rsp, [rax]
+                try machine_code.emit_add_rax_8(); // add rax, 8
+                try machine_code.emit_mov_r8_mem_of_rax(); // mov r8, [rax]
+                try machine_code.emit_add_rax_8(); // add rax, 8
+                try machine_code.emit_mov_rax_mem_of_rax(); // mov rax, [rax]
+                try machine_code.emit_jmp_rax(); // jmp rax
+            },
+            0xe1 => { // trystart
+                const catch_: usize = @intCast(try self.eat_word());
+                try machine_code.emit_mov_rcx_mem_of_rbx_plus_byte(@offsetOf(Vm, "try_stack_len")); // mov rcx, [rbx + ...] // load try_stack_len
+                try machine_code.emit_mov_rax_rcx(); // mov rax, rcx
+                try machine_code.emit_imul_rax_24(); // imul rax, 24
+                try machine_code.emit_add_rax_mem_of_rbx_plus_byte(@offsetOf(Vm, "try_stack")); // add rax, [rbx + ...] // load try_stack
+                try machine_code.emit_mov_mem_of_rax_rsp(); // mov [rax], rsp
+                try machine_code.emit_add_rax_8(); // add rax, 8
+                try machine_code.emit_mov_mem_of_rax_r8(); // mov [rax], r8
+                try machine_code.emit_add_rax_8(); // add rax, 8
+                try machine_code.emit_mov_mem_of_rax_absolute_target(catch_); // mov [rax], <catch>
+                try machine_code.emit_inc_rcx(); // inc rcx
+                try machine_code.emit_mov_mem_of_rbx_plus_byte_rcx(@offsetOf(Vm, "try_stack_len")); // mov [rbx + ...], rcx // store try_stack_len
+            },
+            0xe2 => { // tryend
+                try machine_code.emit_mov_rcx_mem_of_rbx_plus_byte(@offsetOf(Vm, "try_stack_len")); // mov rcx, [rbx + ...] // load try_stack_len
+                try machine_code.emit_dec_rcx(); // dec rcx
+                try machine_code.emit_mov_mem_of_rbx_plus_byte_rcx(@offsetOf(Vm, "try_stack_len")); // mov [rbx + ...], rcx // store try_stack_len
             },
             0xd0 => { // move
                 const regs = try self.parse_regs();

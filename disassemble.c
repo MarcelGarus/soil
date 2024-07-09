@@ -155,6 +155,8 @@ void dump_binary(void) {
     switch (EAT_BYTE) {
       case 0x00: sprintf(cmd, "halt"); break;
       case 0xe0: sprintf(cmd, "panic"); break;
+      case 0xe1: sprintf(cmd, "trystart %lx", EAT_WORD); break;
+      case 0xe2: sprintf(cmd, "tryend"); break;
       case 0xd0: EAT_REGS; sprintf(cmd, "move %s %s", reg1, reg2); break;
       case 0xd1: EAT_REGS; sprintf(cmd, "movei %s %ld", reg1, EAT_WORD); break;
       case 0xd2: EAT_REGS; sprintf(cmd, "moveib %s %d", reg1, EAT_BYTE); break;

@@ -1,5 +1,14 @@
 nop
 
+trystart catch
+call panicking
+tryend
+
+panicking:   call panicking_2
+panicking_2: push a panic
+
+catch:
+
 move a b
 
 movei a 123456

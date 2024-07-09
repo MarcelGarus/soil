@@ -5,10 +5,19 @@ pub const memory_size = 1000000000;
 
 byte_code: []u8,
 machine_code: []align(std.mem.page_size) u8,
+machine_code_ptr: [*]u8,
 byte_to_machine_code: []usize,
 machine_to_byte_code: []usize,
 memory: []u8,
 labels: []LabelAndOffset,
+try_stack: []TryScope,
+try_stack_len: usize,
+
+pub const TryScope = packed struct {
+    rsp: usize,
+    sp: usize,
+    catch_: usize, // machine code offset
+};
 
 pub const LabelAndOffset = struct { label: []u8, offset: usize };
 
@@ -43,4 +52,5 @@ fn actual_run(vm: *@This()) void {
           [vm_ptr] "{rbx}" (vm_ptr),
         : "memory", "r9", "r10", "r11", "r12", "r13", "r14", "r15", "rcx", "rsi", "rdi"
     );
+    std.process.exit(0);
 }

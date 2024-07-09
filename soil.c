@@ -46,6 +46,10 @@ Byte* mem;
 Word call_stack[1024];
 Word call_stack_len;
 
+typedef struct { Word catch; Word call_stack_len; Word sp; } Try;
+Try try_stack[1024];
+Word try_stack_len;
+
 void (*syscall_handlers[256])();
 
 typedef struct { int pos; char* label; int len; } LabelAndPos;
@@ -181,7 +185,24 @@ void run_single(void) {
   Byte opcode = byte_code[ip];
   switch (opcode) {
     case 0x00: ip += 1; break; // nop
-    case 0xe0: dump_and_panic("panicked"); return; // panic
+    case 0xe0: { // panic
+      if (try_stack_len > 0) {
+        try_stack_len--;
+        call_stack_len = try_stack[try_stack_len].call_stack_len;
+        ip = try_stack[try_stack_len].catch;
+      } else {
+        dump_and_panic("panicked"); return;
+      }
+    }
+    case 0xe1: { // trystart
+      Word catch = *(Word*)(byte_code + ip + 1);
+      try_stack[try_stack_len].catch = catch;
+      try_stack[try_stack_len].call_stack_len = call_stack_len;
+      try_stack[try_stack_len].sp = SP;
+      try_stack_len++;
+      ip += 9; break;
+    }
+    case 0xe2: try_stack_len--; ip += 1; break;  // tryend
     case 0xd0: REG1 = REG2; ip += 2; break; // move
     case 0xd1: REG1 = *(Word*)(byte_code + ip + 2); ip += 10; break; // movei
     case 0xd2: REG1 = byte_code[ip + 2]; ip += 3; break; // moveib
@@ -207,7 +228,7 @@ void run_single(void) {
     case 0xf1: { // cjump
       if (ST != 0) ip = *(Word*)(byte_code + ip + 1); else ip += 9; break;
     }
-    case 0xf2: {
+    case 0xf2: { // call
       if (TRACE_CALLS) {
         for (int i = 0; i < call_stack_len; i++)
           eprintf(" ");
@@ -225,7 +246,7 @@ void run_single(void) {
 
       Word return_target = ip + 9;
       call_stack[call_stack_len] = return_target; call_stack_len++;
-      ip = *(Word*)(byte_code + ip + 1); break; // call
+      ip = *(Word*)(byte_code + ip + 1); break;
     }
     case 0xf3: { // ret
       call_stack_len--;

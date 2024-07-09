@@ -12,7 +12,11 @@ patches: ArrayList(Patch),
 
 const Patch = struct {
     where: usize,
-    target: usize,
+    target: PatchTarget,
+};
+const PatchTarget = union(enum) {
+    relative: usize,
+    absolute: usize,
 };
 
 pub fn init(alloc: Alloc) !Self {
@@ -70,8 +74,12 @@ fn emit_word(self: *Self, value: i64) !void {
     std.mem.writeInt(i64, self.buffer[self.len - 8 .. self.len][0..8], value, .little);
 }
 
+fn emit_absolute_patch(self: *Self, target: usize) !void {
+    try self.patches.append(.{ .where = self.len, .target = .{ .absolute = target } });
+    try self.reserve(4);
+}
 fn emit_relative_patch(self: *Self, target: usize) !void {
-    try self.patches.append(.{ .where = self.len, .target = target });
+    try self.patches.append(.{ .where = self.len, .target = .{ .relative = target } });
     try self.reserve(4);
 }
 fn emit_relative_comptime(self: *Self, target: usize) !void {
@@ -97,10 +105,27 @@ pub fn emit_add_r8_8(self: *Self) !void { // add r8, 8
     try self.emit_byte(0xc0);
     try self.emit_byte(0x08);
 }
+pub fn emit_add_rax_8(self: *Self) !void { // add rax, 8
+    try self.emit_byte(0x48);
+    try self.emit_byte(0x83);
+    try self.emit_byte(0xc0);
+    try self.emit_byte(0x08);
+}
+pub fn emit_add_rax_mem_of_rbx_plus_byte(self: *Self, byte: u8) !void { // add rax, [rbx + <byte>]
+    try self.emit_byte(0x48);
+    try self.emit_byte(0x03);
+    try self.emit_byte(0x43);
+    try self.emit_byte(byte);
+}
 pub fn emit_add_rax_rbp(self: *Self) !void { // add rax, rbp
     try self.emit_byte(0x48);
     try self.emit_byte(0x89);
     try self.emit_byte(0xe8);
+}
+pub fn emit_add_rcx_rax(self: *Self) !void { // add rcx, rax
+    try self.emit_byte(0x48);
+    try self.emit_byte(0x01);
+    try self.emit_byte(0xc1);
 }
 pub fn emit_add_rsp_8(self: *Self) !void { // add rsp, 8
     try self.emit_byte(0x48);
@@ -144,10 +169,27 @@ pub fn emit_call_comptime(self: *Self, target: usize) !void { // call <target>
     try self.emit_byte(0xe8);
     try self.emit_relative_comptime(target);
 }
+pub fn emit_cmp_rcx_0(self: *Self) !void { // cmp rcx, 0
+    try self.emit_byte(0x48);
+    try self.emit_byte(0x83);
+    try self.emit_byte(0xf9);
+    try self.emit_byte(0x00);
+}
+pub fn emit_dec_rcx(self: *Self) !void { // dec rcx
+    try self.emit_byte(0x48);
+    try self.emit_byte(0xff);
+    try self.emit_byte(0xc9);
+}
 pub fn emit_idiv_soil(self: *Self, a: Reg) !void { // idiv <a>
     try self.emit_byte(0x49);
     try self.emit_byte(0xf7);
     try self.emit_byte(0xf8 + a.to_byte());
+}
+pub fn emit_imul_rax_24(self: *Self) !void { // imul rax, 24
+    try self.emit_byte(0x48);
+    try self.emit_byte(0x6b);
+    try self.emit_byte(0xc0);
+    try self.emit_byte(0x18);
 }
 pub fn emit_imul_soil_soil(self: *Self, a: Reg, b: Reg) !void { // imul <a>, <b>
     try self.emit_byte(0x4d);
@@ -155,13 +197,26 @@ pub fn emit_imul_soil_soil(self: *Self, a: Reg, b: Reg) !void { // imul <a>, <b>
     try self.emit_byte(0xaf);
     try self.emit_byte(0xc0 + b.to_byte() + 8 * a.to_byte());
 }
+pub fn emit_inc_rcx(self: *Self) !void { // inc rcx
+    try self.emit_byte(0x48);
+    try self.emit_byte(0xff);
+    try self.emit_byte(0xc1);
+}
 pub fn emit_jmp(self: *Self, target: usize) !void { // jmp <target>
     try self.emit_byte(0xe9);
     try self.emit_relative_patch(target);
 }
+pub fn emit_jmp_rax(self: *Self) !void { // jmp rax
+    try self.emit_byte(0xff);
+    try self.emit_byte(0xe0);
+}
 pub fn emit_jmp_to_comptime(self: *Self, target: usize) !void { // jmp <target> // target can't be r12 or rax
     try self.emit_byte(0xe9);
     try self.emit_relative_comptime(target);
+}
+pub fn emit_jne_by_offset(self: *Self, offset: u8) !void { // jne <offset>
+    try self.emit_byte(0x75);
+    try self.emit_byte(offset);
 }
 pub fn emit_jnz(self: *Self, target: usize) !void { // jnz <target> // target can't be r12 or r13
     try self.emit_byte(0x0f);
@@ -196,6 +251,44 @@ pub fn emit_mov_mem_of_rbp_plus_soil_soilb(self: *Self, a: Reg, b: Reg) !void { 
         try self.emit_byte(0x28 + a.to_byte());
     }
 }
+pub fn emit_mov_r8_mem_of_rax(self: *Self) !void { // mov r8, [rax]
+    try self.emit_byte(0x4c);
+    try self.emit_byte(0x8b);
+    try self.emit_byte(0x00);
+}
+pub fn emit_mov_rax_mem_of_rbx_plus_byte(self: *Self, byte: u8) !void { // mov rax, [rbx + <byte>]
+    try self.emit_byte(0x48);
+    try self.emit_byte(0x8b);
+    try self.emit_byte(0x43);
+    try self.emit_byte(byte);
+}
+pub fn emit_mov_mem_of_rax_r8(self: *Self) !void { // mov [rax], r8
+    try self.emit_byte(0x4c);
+    try self.emit_byte(0x89);
+    try self.emit_byte(0x00);
+}
+pub fn emit_mov_mem_of_rax_rsp(self: *Self) !void { // mov [rax], rsp
+    try self.emit_byte(0x48);
+    try self.emit_byte(0x89);
+    try self.emit_byte(0x20);
+}
+pub fn emit_mov_mem_of_rax_absolute_target(self: *Self, target: usize) !void { // mov qword [rax], <target>
+    try self.emit_byte(0x48);
+    try self.emit_byte(0xc7);
+    try self.emit_byte(0x00);
+    try self.emit_absolute_patch(target);
+}
+pub fn emit_mov_mem_of_rbx_plus_byte_rcx(self: *Self, byte: u8) !void { // mov [rbx + <byte>], rcx
+    try self.emit_byte(0x48);
+    try self.emit_byte(0x89);
+    try self.emit_byte(0x4b);
+    try self.emit_byte(byte);
+}
+pub fn emit_mov_rax_rcx(self: *Self) !void { // mov rax, rcx
+    try self.emit_byte(0x48);
+    try self.emit_byte(0x89);
+    try self.emit_byte(0xc8);
+}
 pub fn emit_mov_rax_soil(self: *Self, a: Reg) !void { // mov rax, <a>
     try self.emit_byte(0x4c);
     try self.emit_byte(0x89);
@@ -205,6 +298,12 @@ pub fn emit_mov_rbp_rsp(self: *Self) !void { // mov rbp, rsp
     try self.emit_byte(0x48);
     try self.emit_byte(0x89);
     try self.emit_byte(0xe5);
+}
+pub fn emit_mov_rcx_mem_of_rbx_plus_byte(self: *Self, byte: u8) !void { // mov rax, [rbx + <byte>]
+    try self.emit_byte(0x48);
+    try self.emit_byte(0x8b);
+    try self.emit_byte(0x4b);
+    try self.emit_byte(byte);
 }
 pub fn emit_mov_rcx_r12(self: *Self) !void { // mov rcx, r12
     try self.emit_byte(0x4c);
@@ -230,6 +329,11 @@ pub fn emit_mov_rsi_rsp(self: *Self) !void { // mov rsi, rsp
     try self.emit_byte(0x48);
     try self.emit_byte(0x89);
     try self.emit_byte(0xe6);
+}
+pub fn emit_mov_rsp_mem_of_rax(self: *Self) !void { // mov rsp, [rax]
+    try self.emit_byte(0x48);
+    try self.emit_byte(0x8b);
+    try self.emit_byte(0x20);
 }
 pub fn emit_mov_soil_rdx(self: *Self, a: Reg) !void { // mov <a>, rdx
     try self.emit_byte(0x49);

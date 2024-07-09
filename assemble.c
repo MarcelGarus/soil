@@ -386,6 +386,8 @@ void main(int argc, char** argv) {
 
       if (strequal(command, str("nop"))) EMIT_OP(0x00)
       else if (strequal(command, str("panic"))) EMIT_OP(0xe0)
+      else if (strequal(command, str("trystart"))) EMIT_OP_WORD(0xe1)
+      else if (strequal(command, str("tryend"))) EMIT_OP(0xe2)
       else if (strequal(command, str("move"))) EMIT_OP_REG_REG(0xd0)
       else if (strequal(command, str("movei"))) EMIT_OP_REG_WORD(0xd1)
       else if (strequal(command, str("moveib"))) EMIT_OP_REG_BYTE(0xd2)
