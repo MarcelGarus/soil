@@ -44,8 +44,8 @@
         //    .lazy = false,
         //},
         .@"raylib-zig" = .{
-            .url = "https://github.com/Not-Nik/raylib-zig/archive/devel.tar.gz",
-            .hash = "1220f7489d0946ca7ea7ffec154041cb862066491f789c2a5f823191ed325d4c37ef",
+            .url = "https://github.com/Not-Nik/raylib-zig/archive/19db777449c0f56ca621121a00087d341eb77080.tar.gz",
+            .hash = "1220608d53a1e0e295f8367be3aa7b1439d044af1551ae64cf5ae6ce9edb05858e73",
         },
         // .raygui = .{
         //     .url = "https://github.com/raysan5/raygui/archive/4b3d94f5df6a5a2aa86286350f7e20c0ca35f516.tar.gz",
