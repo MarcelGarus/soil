@@ -7,11 +7,9 @@ const std = @import("std");
 const Alloc = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const rl = @import("raylib");
-const compile = @import("compiler.zig").compile;
-const MachineCode = @import("machine_code.zig");
-const Vm = @import("vm.zig");
-const Reg = @import("reg.zig").Reg;
 const Instant = std.time.Instant;
+const impl = @import("impl.zig");
+const Vm = impl.Vm;
 
 const syscall_log = std.log.scoped(.syscall);
 
@@ -38,9 +36,7 @@ pub fn main() !void {
     while (args.next()) |arg| try rest.append(arg);
 
     const binary = try std.fs.cwd().readFileAlloc(alloc, binary_path, 1000000000);
-    var vm = try compile(alloc, binary, Syscalls);
-
-    try vm.run();
+    try impl.run(alloc, binary, Syscalls);
 }
 
 var ui_inited = false;
@@ -52,6 +48,29 @@ fn init_ui() void {
 }
 
 const Syscalls = struct {
+    pub fn name_by_number(number: u8) ?[]const u8 {
+        return switch (number) {
+            0 => "exit",
+            1 => "print",
+            2 => "log",
+            3 => "create",
+            4 => "open_reading",
+            5 => "open_writing",
+            6 => "read",
+            7 => "write",
+            8 => "close",
+            9 => "argc",
+            10 => "arg",
+            11 => "read_input",
+            12 => "execute",
+            13 => "ui_dimensions",
+            14 => "ui_render",
+            15 => "get_key_pressed",
+            16 => "instant_now",
+            else => null,
+        };
+    }
+
     pub fn exit(_: *Vm, status: i64) callconv(.C) void {
         syscall_log.info("exit({})\n", .{status});
         if (ui_inited) {
@@ -151,11 +170,10 @@ const Syscalls = struct {
         var gpa = std.heap.GeneralPurposeAllocator(.{}){};
         const alloc = gpa.allocator();
         const binary = vm.memory[@intCast(binary_data)..][0..@intCast(binary_len)];
-        var new_vm = compile(alloc, binary, Syscalls) catch |e| {
-            std.log.err("Compilation failed: {}\n", .{e});
+        impl.run(alloc, binary, Syscalls) catch |e| {
+            std.log.err("Run failed: {}\n", .{e});
             std.process.exit(1);
         };
-        try new_vm.run();
     }
 
     pub fn ui_dimensions(_: *Vm) callconv(.C) Vm.TwoValues {

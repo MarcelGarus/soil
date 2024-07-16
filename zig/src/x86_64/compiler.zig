@@ -271,28 +271,10 @@ const Compiler = struct {
                 const number = try self.eat_byte();
                 inline for (0..256) |n| {
                     if (number == n) {
-                        const name: ?[]const u8 = switch (n) {
-                            0 => "exit",
-                            1 => "print",
-                            2 => "log",
-                            3 => "create",
-                            4 => "open_reading",
-                            5 => "open_writing",
-                            6 => "read",
-                            7 => "write",
-                            8 => "close",
-                            9 => "argc",
-                            10 => "arg",
-                            11 => "read_input",
-                            12 => "execute",
-                            13 => "ui_dimensions",
-                            14 => "ui_render",
-                            15 => "get_key_pressed",
-                            16 => "instant_now",
-                            else => null,
-                        };
+                        const name = comptime syscalls.name_by_number(n);
                         const fun_exists = name != null and @hasDecl(syscalls, name.?);
                         if (!fun_exists) {
+                            std.log.err("Syscall {} doesn't exist.", .{n});
                             // TODO: add call to stub
                         } else {
                             const fun = @field(syscalls, name.?);
