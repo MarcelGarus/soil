@@ -16,6 +16,7 @@
 | 13     | ui_dimensions   |                 |              |               |      |
 | 14     | ui_render       | buffer.data     | buffer.width | buffer.height |      |
 | 15     | get_key_pressed |                 |              |               |      |
+| 16     | instant_now     |                 |              |               |      |
 
 - **exit**: Exits the program. This is guaranteed to never return.
 - **print**: Writes the message to stdout.
@@ -33,3 +34,4 @@
 - **ui_dimensions**: Loads the UI width into `a`, its height into `b`.
 - **ui_render**: Renders the buffer as a UI. Outer dimension is height, inner dimensions is width, each pixel is three bytes (RGB).
 - **get_key_pressed**: Sets `a` to the keycode of the next pressed key (`0` if none is pressed).
+- **instant_now**: Sets `a` to a value that represents the current time in nanoseconds since some undefined reference event. The reference event is consistent over multiple instant_now calls, so you can use this to measure time.

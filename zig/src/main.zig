@@ -11,17 +11,22 @@ const compile = @import("compiler.zig").compile;
 const MachineCode = @import("machine_code.zig");
 const Vm = @import("vm.zig");
 const Reg = @import("reg.zig").Reg;
+const Instant = std.time.Instant;
 
 const syscall_log = std.log.scoped(.syscall);
 
-const ui_size = .{ .width = 480, .height = 360 };
+const ui_size = .{ .width = 720, .height = 360 };
 const ui_scale = 2.0;
 
 pub const std_options = .{ .log_scope_levels = &[_]std.log.ScopeLevel{
     .{ .scope = .syscall, .level = .warn },
 } };
 
+var program_start_instant: ?Instant = undefined;
+
 pub fn main() !void {
+    program_start_instant = try Instant.now();
+
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     // defer std.debug.assert(gpa.deinit() == .ok);
     const alloc = gpa.allocator();
@@ -78,7 +83,6 @@ const Syscalls = struct {
     pub fn open_reading(vm: *Vm, filename_data: i64, filename_len: i64) callconv(.C) i64 {
         syscall_log.info("open_reading({x}, {})\n", .{ filename_data, filename_len });
         const filename = vm.memory[@intCast(filename_data)..][0..@intCast(filename_len)];
-        std.debug.print("opening {s}\n", .{filename});
         const flags = .{ .ACCMODE = .RDONLY };
         const fd = std.os.linux.open(&(toCPath(filename) catch unreachable), flags, 0);
         return @bitCast(fd);
@@ -191,6 +195,17 @@ const Syscalls = struct {
         init_ui();
 
         return @intFromEnum(rl.getKeyPressed());
+    }
+
+    pub fn instant_now(_: *Vm) callconv(.C) i64 {
+        syscall_log.info("instant_now()\n", .{});
+
+        const now = Instant.now() catch |e| {
+            std.log.err("Couldn't get instant: {}\n", .{e});
+            std.process.exit(1);
+        };
+        const nanos_since_start = Instant.since(now, program_start_instant.?);
+        return @intCast(nanos_since_start);
     }
 };
 

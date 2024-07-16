@@ -288,6 +288,7 @@ const Compiler = struct {
                             13 => "ui_dimensions",
                             14 => "ui_render",
                             15 => "get_key_pressed",
+                            16 => "instant_now",
                             else => null,
                         };
                         const fun_exists = name != null and @hasDecl(syscalls, name.?);
