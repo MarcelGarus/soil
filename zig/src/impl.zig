@@ -2,7 +2,10 @@ const builtin = @import("builtin");
 const std = @import("std");
 const Alloc = std.mem.Allocator;
 
-const use_interpreter_override = false;
+const use_interpreter_override = true;
+
+// Used by syscalls to return two values.
+pub const TwoValues = extern struct { a: i64, b: i64 };
 
 pub const Vm = Impl().Vm;
 pub const run = Impl().run;

@@ -176,7 +176,7 @@ const Syscalls = struct {
         };
     }
 
-    pub fn ui_dimensions(_: *Vm) callconv(.C) Vm.TwoValues {
+    pub fn ui_dimensions(_: *Vm) callconv(.C) impl.TwoValues {
         syscall_log.info("ui_dimensions()\n", .{});
         init_ui();
         return .{ .a = ui_size.width, .b = ui_size.height };

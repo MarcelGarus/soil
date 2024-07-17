@@ -21,9 +21,6 @@ pub const TryScope = packed struct {
 
 pub const LabelAndOffset = struct { label: []u8, offset: usize };
 
-// Used by syscalls to return two values.
-pub const TwoValues = extern struct { a: i64, b: i64 };
-
 pub fn run(vm: *@This()) !void {
     const PROT = std.os.linux.PROT;
     const protection = PROT.READ | PROT.EXEC;
