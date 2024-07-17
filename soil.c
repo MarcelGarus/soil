@@ -439,6 +439,10 @@ void syscall_execute(void) {
   memcpy(bin, mem + REGA, len);
   init_vm(bin, len);
 }
+void syscall_instant_now(void) {
+  if (TRACE_SYSCALLS) eprintf("syscall instant_now()\n");
+  REGA = 0;
+}
 
 void init_syscalls(void) {
   for (int i = 0; i < 256; i++) syscall_handlers[i] = syscall_none;
@@ -455,6 +459,7 @@ void init_syscalls(void) {
   syscall_handlers[10] = syscall_arg;
   syscall_handlers[11] = syscall_read_input;
   syscall_handlers[12] = syscall_execute;
+  syscall_handlers[16] = syscall_instant_now;
 }
 
 int main(int argc, char** argv) {
