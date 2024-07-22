@@ -1,7 +1,6 @@
 const std = @import("std");
 const Alloc = std.mem.Allocator;
 const ArrayList = std.ArrayList;
-const Impl = @import("../impl.zig");
 const File = @import("../file.zig");
 const ByteCode = @import("../byte_code.zig");
 const Reg = ByteCode.Reg;
@@ -10,7 +9,7 @@ const Instruction = ByteCode.Instruction;
 const RegAndWord = ByteCode.RegAndWord;
 const RegAndByte = ByteCode.RegAndByte;
 const parse_instruction = @import("../parsing.zig").parse_instruction;
-const SyscallTypes = @import("../syscall_types.zig");
+const Syscall = @import("../syscall.zig");
 const options = @import("root").vm_options;
 
 byte_code: []const u8,
@@ -162,55 +161,31 @@ fn run_single(vm: *Self, Syscalls: type) !void {
         },
         .ret => vm.ip = vm.call_stack.pop(),
         .syscall => |number| {
-            // Syscalls are implemented in Zig.
-            inline for (0..256) |n| {
-                if (number == n) {
-                    const name = comptime Syscalls.name_by_number(n);
-                    const fun_exists = name != null and @hasDecl(Syscalls, name.?);
-                    if (!fun_exists) {
-                        return error.SyscallDoesntExist;
-                    } else {
-                        const fun = @field(Syscalls, name.?);
-                        const signature = @typeInfo(@TypeOf(fun)).Fn;
+            @setEvalBranchQuota(2000000);
+            switch (number) {
+                inline else => |n| {
+                    const fun = Syscall.by_number(Syscalls, n);
+                    const signature = @typeInfo(@TypeOf(fun)).Fn;
 
-                        if (signature.is_generic)
-                            @compileError(name.? ++ " syscall is generic.");
-                        if (signature.is_var_args)
-                            @compileError(name.? ++ " syscall uses var args.");
-                        if (signature.calling_convention != .C)
-                            @compileError(name.? ++ " syscall doesn't use the C calling convention.");
-                        inline for (signature.params, 0..) |param, i| {
-                            if (param.type) |param_type| {
-                                if (i == 0) {
-                                    if (param_type != *Self)
-                                        @compileError(name.? ++ " syscall's first arg is not *Vm, but " ++ @typeName(param_type) ++ ".");
-                                } else {
-                                    if (param_type != i64)
-                                        @compileError(name.? ++ " syscall's args must be i64 (the register contents), but an argument is a " ++ @typeName(param_type) ++ ".");
-                                }
-                            }
-                        }
+                    const result = switch (signature.params.len) {
+                        1 => fun(vm),
+                        2 => fun(vm, vm.get_int(.a)),
+                        3 => fun(vm, vm.get_int(.a), vm.get_int(.b)),
+                        4 => fun(vm, vm.get_int(.a), vm.get_int(.b), vm.get_int(.c)),
+                        else => @compileError("handle syscalls with more params"),
+                    };
 
-                        const result = switch (signature.params.len) {
-                            1 => fun(vm),
-                            2 => fun(vm, vm.get_int(.a)),
-                            3 => fun(vm, vm.get_int(.a), vm.get_int(.b)),
-                            4 => fun(vm, vm.get_int(.a), vm.get_int(.b), vm.get_int(.c)),
-                            else => @compileError("handle syscalls with more params"),
-                        };
-
-                        // Move the return value into the correct registers.
-                        switch (@TypeOf(result)) {
-                            SyscallTypes.ZeroValues => {},
-                            SyscallTypes.OneValue => vm.set_int(.a, result),
-                            SyscallTypes.TwoValues => {
-                                vm.set_int(.a, result.a);
-                                vm.set_int(.b, result.b);
-                            },
-                            else => @compileError("syscalls can only return void or i64 or TwoValues"),
-                        }
+                    // Move the return value into the correct registers.
+                    switch (@TypeOf(result)) {
+                        Syscall.ZeroValues => {},
+                        Syscall.OneValue => vm.set_int(.a, result),
+                        Syscall.TwoValues => {
+                            vm.set_int(.a, result.a);
+                            vm.set_int(.b, result.b);
+                        },
+                        else => @compileError("syscalls can only return void or i64 or TwoValues"),
                     }
-                }
+                },
             }
         },
         .cmp => |regs| vm.set_int(.st, vm.get_int(regs.a) - vm.get_int(regs.b)),

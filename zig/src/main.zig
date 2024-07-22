@@ -8,10 +8,9 @@ const Alloc = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const rl = @import("raylib");
 const Instant = std.time.Instant;
-const parse_file = @import("parsing.zig").parse_file;
-const impl = @import("impl.zig");
-const Vm = impl.Vm;
-const SyscallTypes = @import("syscall_types.zig");
+const soil = @import("root.zig");
+const Syscall = soil.Syscall;
+const Vm = soil.Vm;
 
 const syscall_log = std.log.scoped(.syscall);
 
@@ -44,9 +43,8 @@ pub fn main() !void {
     var rest = ArrayList([]const u8).init(alloc);
     while (args.next()) |arg| try rest.append(arg);
 
-    var binary = try std.fs.cwd().readFileAlloc(alloc, binary_path, 1000000000);
-    const file = try parse_file(&binary, alloc);
-    try impl.run(alloc, file, Syscalls);
+    const binary = try std.fs.cwd().readFileAlloc(alloc, binary_path, 1000000000);
+    try soil.run(binary, alloc, Syscalls);
 }
 
 var program_start_instant: ?Instant = undefined;
@@ -64,49 +62,31 @@ fn init_ui() void {
 }
 
 const Syscalls = struct {
-    pub fn name_by_number(number: u8) ?[]const u8 {
-        return switch (number) {
-            0 => "exit",
-            1 => "print",
-            2 => "log",
-            3 => "create",
-            4 => "open_reading",
-            5 => "open_writing",
-            6 => "read",
-            7 => "write",
-            8 => "close",
-            9 => "argc",
-            10 => "arg",
-            11 => "read_input",
-            12 => "execute",
-            13 => "ui_dimensions",
-            14 => "ui_render",
-            15 => "get_key_pressed",
-            16 => "instant_now",
-            else => null,
-        };
+    pub fn not_implemented(_: *Vm) callconv(.C) Syscall.ZeroValues {
+        std.debug.print("Syscall not implemented", .{});
+        std.process.exit(1);
     }
 
-    pub fn exit(_: *Vm, status: i64) callconv(.C) SyscallTypes.ZeroValues {
+    pub fn exit(_: *Vm, status: i64) callconv(.C) Syscall.ZeroValues {
         syscall_log.info("exit({})\n", .{status});
         if (ui_inited)
             rl.closeWindow();
         std.process.exit(@intCast(status));
     }
 
-    pub fn print(vm: *Vm, msg_data: i64, msg_len: i64) callconv(.C) SyscallTypes.ZeroValues {
+    pub fn print(vm: *Vm, msg_data: i64, msg_len: i64) callconv(.C) Syscall.ZeroValues {
         syscall_log.info("print({x}, {})\n", .{ msg_data, msg_len });
         const msg = vm.memory[@intCast(msg_data)..][0..@intCast(msg_len)];
         std.io.getStdOut().writer().print("{s}", .{msg}) catch {};
     }
 
-    pub fn log(vm: *Vm, msg_data: i64, msg_len: i64) callconv(.C) SyscallTypes.ZeroValues {
+    pub fn log(vm: *Vm, msg_data: i64, msg_len: i64) callconv(.C) Syscall.ZeroValues {
         syscall_log.info("log({x}, {})\n", .{ msg_data, msg_len });
         const msg = vm.memory[@intCast(msg_data)..][0..@intCast(msg_len)];
         std.io.getStdErr().writer().print("{s}", .{msg}) catch {};
     }
 
-    pub fn create(vm: *Vm, filename_data: i64, filename_len: i64, mode: i64) callconv(.C) SyscallTypes.OneValue {
+    pub fn create(vm: *Vm, filename_data: i64, filename_len: i64, mode: i64) callconv(.C) Syscall.OneValue {
         syscall_log.info("create({x}, {}, {o})\n", .{ filename_data, filename_len, mode });
         const filename = vm.memory[@intCast(filename_data)..][0..@intCast(filename_len)];
         const flags = .{ .ACCMODE = .RDWR, .CREAT = true, .TRUNC = true };
@@ -114,7 +94,7 @@ const Syscalls = struct {
         return @bitCast(fd);
     }
 
-    pub fn open_reading(vm: *Vm, filename_data: i64, filename_len: i64) callconv(.C) SyscallTypes.OneValue {
+    pub fn open_reading(vm: *Vm, filename_data: i64, filename_len: i64) callconv(.C) Syscall.OneValue {
         syscall_log.info("open_reading({x}, {})\n", .{ filename_data, filename_len });
         const filename = vm.memory[@intCast(filename_data)..][0..@intCast(filename_len)];
         const flags = .{ .ACCMODE = .RDONLY };
@@ -122,7 +102,7 @@ const Syscalls = struct {
         return @bitCast(fd);
     }
 
-    pub fn open_writing(vm: *Vm, filename_data: i64, filename_len: i64) callconv(.C) SyscallTypes.OneValue {
+    pub fn open_writing(vm: *Vm, filename_data: i64, filename_len: i64) callconv(.C) Syscall.OneValue {
         syscall_log.info("open_writing({x}, {})\n", .{ filename_data, filename_len });
         const filename = vm.memory[@intCast(filename_data)..][0..@intCast(filename_len)];
         const flags = .{ .ACCMODE = .WRONLY, .TRUNC = true, .CREAT = true };
@@ -130,27 +110,27 @@ const Syscalls = struct {
         return @bitCast(fd);
     }
 
-    pub fn read(vm: *Vm, file_descriptor: i64, buffer_data: i64, buffer_len: i64) callconv(.C) SyscallTypes.OneValue {
+    pub fn read(vm: *Vm, file_descriptor: i64, buffer_data: i64, buffer_len: i64) callconv(.C) Syscall.OneValue {
         syscall_log.info("read({}, {x}, {})\n", .{ file_descriptor, buffer_data, buffer_len });
         const fd: i32 = @intCast(file_descriptor);
         const len = std.os.linux.read(fd, vm.memory[@intCast(buffer_data)..].ptr, @intCast(buffer_len));
         return @bitCast(len);
     }
 
-    pub fn write(vm: *Vm, file_descriptor: i64, buffer_data: i64, buffer_len: i64) callconv(.C) SyscallTypes.OneValue {
+    pub fn write(vm: *Vm, file_descriptor: i64, buffer_data: i64, buffer_len: i64) callconv(.C) Syscall.OneValue {
         syscall_log.info("write({}, {x}, {})\n", .{ file_descriptor, buffer_data, buffer_len });
         const fd: i32 = @intCast(file_descriptor);
         const len = std.os.linux.write(fd, vm.memory[@intCast(buffer_data)..].ptr, @intCast(buffer_len));
         return @bitCast(len);
     }
 
-    pub fn close(_: *Vm, file_descriptor: i64) callconv(.C) SyscallTypes.OneValue {
+    pub fn close(_: *Vm, file_descriptor: i64) callconv(.C) Syscall.OneValue {
         syscall_log.info("close({})\n", .{file_descriptor});
         const fd: i32 = @intCast(file_descriptor);
         return @bitCast(std.os.linux.close(fd));
     }
 
-    pub fn argc(_: *Vm) callconv(.C) SyscallTypes.OneValue {
+    pub fn argc(_: *Vm) callconv(.C) Syscall.OneValue {
         syscall_log.info("argc()\n", .{});
         var args = std.process.args();
         var count: i64 = 0;
@@ -158,7 +138,7 @@ const Syscalls = struct {
         return count - 1; // Skip the first arg, which is just the soil invocation.
     }
 
-    pub fn arg(vm: *Vm, index: i64, buffer_data: i64, buffer_len: i64) callconv(.C) SyscallTypes.OneValue {
+    pub fn arg(vm: *Vm, index: i64, buffer_data: i64, buffer_len: i64) callconv(.C) Syscall.OneValue {
         syscall_log.info("arg({}, {x}, {})\n", .{ index, buffer_data, buffer_len });
         var args = std.process.args();
         _ = args.skip(); // Skip the first arg, which is just the soil invocation.
@@ -170,7 +150,7 @@ const Syscalls = struct {
         return @intCast(len);
     }
 
-    pub fn read_input(vm: *Vm, buffer_data: i64, buffer_len: i64) callconv(.C) SyscallTypes.OneValue {
+    pub fn read_input(vm: *Vm, buffer_data: i64, buffer_len: i64) callconv(.C) Syscall.OneValue {
         syscall_log.info("read_input({x}, {})\n", .{ buffer_data, buffer_len });
         const len = std.io.getStdIn().reader().read(vm.memory[@intCast(buffer_data)..][0..@intCast(buffer_len)]) catch {
             std.log.err("Couldn't read from input.\n", .{});
@@ -179,29 +159,25 @@ const Syscalls = struct {
         return @intCast(len);
     }
 
-    pub fn execute(vm: *Vm, binary_data: i64, binary_len: i64) callconv(.C) SyscallTypes.ZeroValues {
+    pub fn execute(vm: *Vm, binary_data: i64, binary_len: i64) callconv(.C) Syscall.ZeroValues {
         syscall_log.info("execute({x}, {})\n", .{ binary_data, binary_len });
 
         var gpa = std.heap.GeneralPurposeAllocator(.{}){};
         const alloc = gpa.allocator();
-        var binary = vm.memory[@intCast(binary_data)..][0..@intCast(binary_len)];
-        const file = parse_file(&binary, alloc) catch |err| {
-            std.log.err("Parsing failed: {}\n", .{err});
-            std.process.exit(1);
-        };
-        impl.run(alloc, file, Syscalls) catch |err| {
+        const binary = vm.memory[@intCast(binary_data)..][0..@intCast(binary_len)];
+        soil.run(binary, alloc, Syscalls) catch |err| {
             std.log.err("Run failed: {}\n", .{err});
             std.process.exit(1);
         };
     }
 
-    pub fn ui_dimensions(_: *Vm) callconv(.C) SyscallTypes.TwoValues {
+    pub fn ui_dimensions(_: *Vm) callconv(.C) Syscall.TwoValues {
         syscall_log.info("ui_dimensions()\n", .{});
         init_ui();
         return .{ .a = ui_options.size.width, .b = ui_options.size.height };
     }
 
-    pub fn ui_render(vm: *Vm, buffer_data: i64, buffer_width: i64, buffer_height: i64) callconv(.C) SyscallTypes.ZeroValues {
+    pub fn ui_render(vm: *Vm, buffer_data: i64, buffer_width: i64, buffer_height: i64) callconv(.C) Syscall.ZeroValues {
         syscall_log.info("ui_render({}, {}, {})\n", .{ buffer_data, buffer_width, buffer_height });
         init_ui();
 
@@ -227,14 +203,14 @@ const Syscalls = struct {
         rl.drawTextureEx(texture, .{ .x = 0, .y = 0 }, 0, ui_options.scale, rl.Color.white);
     }
 
-    pub fn get_key_pressed(_: *Vm) callconv(.C) SyscallTypes.OneValue {
+    pub fn get_key_pressed(_: *Vm) callconv(.C) Syscall.OneValue {
         syscall_log.info("get_key_pressed()\n", .{});
         init_ui();
 
         return @intFromEnum(rl.getKeyPressed());
     }
 
-    pub fn instant_now(_: *Vm) callconv(.C) SyscallTypes.OneValue {
+    pub fn instant_now(_: *Vm) callconv(.C) Syscall.OneValue {
         syscall_log.info("instant_now()\n", .{});
 
         const now = Instant.now() catch |e| {

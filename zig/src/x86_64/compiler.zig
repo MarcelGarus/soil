@@ -22,11 +22,10 @@ const Alloc = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const MachineCode = @import("machine_code.zig");
 const Vm = @import("vm.zig");
-const Impl = @import("../impl.zig");
 const File = @import("../file.zig");
 const ByteCode = @import("../byte_code.zig");
 const parse_instruction = @import("../parsing.zig").parse_instruction;
-const SyscallTypes = @import("../syscall_types.zig");
+const Syscall = @import("../syscall.zig");
 const options = @import("root").vm_options;
 
 const Self = @This();
@@ -189,102 +188,76 @@ fn compile_to_machine_code(instruction: ByteCode.Instruction, machine_code: *Mac
         },
         .syscall => |number| {
             // Syscalls are implemented in Zig.
-            inline for (0..256) |n| {
-                if (number == n) {
-                    const name = comptime syscalls.name_by_number(n);
-                    const fun_exists = name != null and @hasDecl(syscalls, name.?);
-                    if (!fun_exists) {
-                        std.log.err("Syscall {} doesn't exist.", .{n});
-                        // TODO: add call to stub
-                    } else {
-                        const fun = @field(syscalls, name.?);
-                        const signature = @typeInfo(@TypeOf(fun)).Fn;
+            @setEvalBranchQuota(2000000);
+            switch (number) {
+                inline else => |n| {
+                    const fun = Syscall.by_number(syscalls, n);
 
-                        if (signature.is_generic)
-                            @compileError(name.? ++ " syscall is generic.");
-                        if (signature.is_var_args)
-                            @compileError(name.? ++ " syscall uses var args.");
-                        if (signature.calling_convention != .C)
-                            @compileError(name.? ++ " syscall doesn't use the C calling convention.");
-                        inline for (signature.params, 0..) |param, i| {
-                            if (param.type) |param_type| {
-                                if (i == 0) {
-                                    if (param_type != *Vm)
-                                        @compileError(name.? ++ " syscall's first arg is not *Vm, but " ++ @typeName(param_type) ++ ".");
-                                } else {
-                                    if (param_type != i64)
-                                        @compileError(name.? ++ " syscall's args must be i64 (the register contents), but an argument is a " ++ @typeName(param_type) ++ ".");
-                                }
-                            }
-                        }
+                    // Save all the Soil register contents on the stack.
+                    try machine_code.emit_push_soil(.sp);
+                    try machine_code.emit_push_soil(.st);
+                    try machine_code.emit_push_soil(.a);
+                    try machine_code.emit_push_soil(.b);
+                    try machine_code.emit_push_soil(.c);
+                    try machine_code.emit_push_soil(.d);
+                    try machine_code.emit_push_soil(.e);
+                    try machine_code.emit_push_soil(.f);
+                    try machine_code.emit_push_rbp();
+                    try machine_code.emit_push_rbx();
 
-                        // Save all the Soil register contents on the stack.
-                        try machine_code.emit_push_soil(.sp);
-                        try machine_code.emit_push_soil(.st);
-                        try machine_code.emit_push_soil(.a);
-                        try machine_code.emit_push_soil(.b);
-                        try machine_code.emit_push_soil(.c);
-                        try machine_code.emit_push_soil(.d);
-                        try machine_code.emit_push_soil(.e);
-                        try machine_code.emit_push_soil(.f);
-                        try machine_code.emit_push_rbp();
-                        try machine_code.emit_push_rbx();
+                    // Align the stack to 16 bytes.
+                    try machine_code.emit_mov_rbp_rsp();
+                    try machine_code.emit_and_rsp_0xfffffffffffffff0();
+                    try machine_code.emit_push_rbp();
+                    try machine_code.emit_sub_rsp_8();
 
-                        // Align the stack to 16 bytes.
-                        try machine_code.emit_mov_rbp_rsp();
-                        try machine_code.emit_and_rsp_0xfffffffffffffff0();
-                        try machine_code.emit_push_rbp();
-                        try machine_code.emit_sub_rsp_8();
+                    // Move args into the correct registers for the C ABI.
+                    // Soil        C ABI
+                    // Vm (rbx) -> arg 1 (rdi)
+                    // a (r10)  -> arg 2 (rsi)
+                    // b (r11)  -> arg 3 (rdx)
+                    // c (r12)  -> arg 4 (rcx)
+                    // d (r13)  -> arg 5 (r8)
+                    // e (r14)  -> arg 6 (r9)
+                    const signature = @typeInfo(@TypeOf(fun)).Fn;
+                    const num_args = signature.params.len;
+                    if (num_args >= 1) try machine_code.emit_mov_rdi_rbx();
+                    if (num_args >= 2) try machine_code.emit_mov_rsi_r10();
+                    if (num_args >= 3) try machine_code.emit_mov_rdx_r11();
+                    if (num_args >= 4) try machine_code.emit_mov_rcx_r12();
+                    if (num_args >= 5) try machine_code.emit_mov_soil_soil(.sp, .d);
+                    if (num_args >= 5) try machine_code.emit_mov_soil_soil(.st, .e);
 
-                        // Move args into the correct registers for the C ABI.
-                        // Soil        C ABI
-                        // Vm (rbx) -> arg 1 (rdi)
-                        // a (r10)  -> arg 2 (rsi)
-                        // b (r11)  -> arg 3 (rdx)
-                        // c (r12)  -> arg 4 (rcx)
-                        // d (r13)  -> arg 5 (r8)
-                        // e (r14)  -> arg 6 (r9)
-                        const num_args = signature.params.len;
-                        if (num_args >= 1) try machine_code.emit_mov_rdi_rbx();
-                        if (num_args >= 2) try machine_code.emit_mov_rsi_r10();
-                        if (num_args >= 3) try machine_code.emit_mov_rdx_r11();
-                        if (num_args >= 4) try machine_code.emit_mov_rcx_r12();
-                        if (num_args >= 5) try machine_code.emit_mov_soil_soil(.sp, .d);
-                        if (num_args >= 5) try machine_code.emit_mov_soil_soil(.st, .e);
+                    // Call the syscall implementation.
+                    try machine_code.emit_call_comptime(@intFromPtr(&fun));
 
-                        // Call the syscall implementation.
-                        try machine_code.emit_call_comptime(@intFromPtr(&fun));
+                    // Unalign the stack.
+                    try machine_code.emit_add_rsp_8();
+                    try machine_code.emit_pop_rsp();
 
-                        // Unalign the stack.
-                        try machine_code.emit_add_rsp_8();
-                        try machine_code.emit_pop_rsp();
+                    // Restore Soil register contents.
+                    try machine_code.emit_pop_rbx();
+                    try machine_code.emit_pop_rbp();
+                    try machine_code.emit_pop_soil(.f);
+                    try machine_code.emit_pop_soil(.e);
+                    try machine_code.emit_pop_soil(.d);
+                    try machine_code.emit_pop_soil(.c);
+                    try machine_code.emit_pop_soil(.b);
+                    try machine_code.emit_pop_soil(.a);
+                    try machine_code.emit_pop_soil(.st);
+                    try machine_code.emit_pop_soil(.sp);
 
-                        // Restore Soil register contents.
-                        try machine_code.emit_pop_rbx();
-                        try machine_code.emit_pop_rbp();
-                        try machine_code.emit_pop_soil(.f);
-                        try machine_code.emit_pop_soil(.e);
-                        try machine_code.emit_pop_soil(.d);
-                        try machine_code.emit_pop_soil(.c);
-                        try machine_code.emit_pop_soil(.b);
-                        try machine_code.emit_pop_soil(.a);
-                        try machine_code.emit_pop_soil(.st);
-                        try machine_code.emit_pop_soil(.sp);
-
-                        // Move the return value into the correct registers.
-                        if (signature.return_type) |returns| {
-                            switch (returns) {
-                                SyscallTypes.ZeroValues => {},
-                                SyscallTypes.OneValue => try machine_code.emit_mov_soil_rax(.a),
-                                SyscallTypes.TwoValues => {
-                                    try machine_code.emit_mov_soil_rax(.a);
-                                    try machine_code.emit_mov_soil_rdx(.b);
-                                },
-                                else => @compileError("syscalls can only return void or i64"),
-                            }
-                        }
+                    // Move the return value into the correct registers.
+                    switch (signature.return_type.?) {
+                        Syscall.ZeroValues => {},
+                        Syscall.OneValue => try machine_code.emit_mov_soil_rax(.a),
+                        Syscall.TwoValues => {
+                            try machine_code.emit_mov_soil_rax(.a);
+                            try machine_code.emit_mov_soil_rdx(.b);
+                        },
+                        else => unreachable,
                     }
-                }
+                },
             }
         },
         .cmp => |regs| {

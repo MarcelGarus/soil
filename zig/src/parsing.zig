@@ -39,7 +39,7 @@ fn parse_labels(input: *[]const u8, alloc: Alloc) !File.Labels {
     return .{ .labels = labels_to_offset.items };
 }
 
-pub fn parse_file(input: *[]const u8, alloc: Alloc) !File {
+pub fn parse_file(input: []const u8, alloc: Alloc) !File {
     var file = File{
         .name = &[_]u8{},
         .description = &[_]u8{},
@@ -48,18 +48,19 @@ pub fn parse_file(input: *[]const u8, alloc: Alloc) !File {
         .labels = File.Labels.init(),
     };
 
-    try parse_magic_byte(input, 's');
-    try parse_magic_byte(input, 'o');
-    try parse_magic_byte(input, 'i');
-    try parse_magic_byte(input, 'l');
+    var rest = input;
+    try parse_magic_byte(&rest, 's');
+    try parse_magic_byte(&rest, 'o');
+    try parse_magic_byte(&rest, 'i');
+    try parse_magic_byte(&rest, 'l');
 
     while (true) {
-        const section_type = parse_byte(input) catch |err| switch (err) {
+        const section_type = parse_byte(&rest) catch |err| switch (err) {
             error.EndOfInput => break,
             else => return err,
         };
-        const section_len = try parse_usize(input);
-        var section = try parse_amount(input, section_len);
+        const section_len = try parse_usize(&rest);
+        var section = try parse_amount(&rest, section_len);
         switch (section_type) {
             0 => file.byte_code = section,
             1 => file.initial_memory = section,
