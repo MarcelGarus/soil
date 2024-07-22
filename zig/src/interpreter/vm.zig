@@ -92,7 +92,7 @@ fn run_single(vm: *Self, Syscalls: type) !void {
     const instruction = try parse_instruction(&rest);
     const len_after = rest.len;
     vm.ip += (len_before - len_after);
-    if (options.trace_regs) {
+    if (options.trace_registers) {
         for (vm.call_stack.items) |_| std.debug.print(" ", .{});
         std.debug.print(
             "{}\t",
@@ -201,9 +201,9 @@ fn run_single(vm: *Self, Syscalls: type) !void {
 
                         // Move the return value into the correct registers.
                         switch (@TypeOf(result)) {
-                            SyscallTypes.ReturnZeroRegs => {},
-                            SyscallTypes.ReturnOneReg => vm.set_int(.a, result),
-                            SyscallTypes.ReturnTwoRegs => {
+                            SyscallTypes.ZeroValues => {},
+                            SyscallTypes.OneValue => vm.set_int(.a, result),
+                            SyscallTypes.TwoValues => {
                                 vm.set_int(.a, result.a);
                                 vm.set_int(.b, result.b);
                             },
@@ -252,7 +252,7 @@ fn run_single(vm: *Self, Syscalls: type) !void {
         .xor => |regs| vm.set_int(regs.a, vm.get_int(regs.a) ^ vm.get_int(regs.b)),
         .not => |reg| vm.set_int(reg, ~vm.get_int(reg)),
     }
-    if (options.trace_regs) {
+    if (options.trace_registers) {
         std.debug.print("ip = {}, sp = {}, st = {}, a = {}, b = {}, c = {}, d = {}, e = {}, f = {}\n", .{
             vm.ip,
             vm.get_int(.sp),

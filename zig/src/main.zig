@@ -17,8 +17,10 @@ const syscall_log = std.log.scoped(.syscall);
 
 pub const vm_options = .{
     .trace_calls = false,
-    .trace_regs = false,
+    .trace_registers = false,
     .memory_size = 2000000000,
+    // Note: The interpreter is automatically used if any of the trace options
+    // is enabled.
     .use_interpreter_override = false,
 };
 const ui_options = .{

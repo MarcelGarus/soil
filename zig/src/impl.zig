@@ -17,7 +17,7 @@ fn Impl() type {
         }
     };
 
-    if (options.use_interpreter_override or options.trace_calls or options.trace_regs)
+    if (options.use_interpreter_override or options.trace_calls or options.trace_registers)
         return Interpreter;
 
     switch (builtin.cpu.arch) {
