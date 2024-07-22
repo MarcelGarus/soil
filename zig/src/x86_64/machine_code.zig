@@ -3,7 +3,7 @@
 const std = @import("std");
 const Alloc = std.mem.Allocator;
 const ArrayList = std.ArrayList;
-const Reg = @import("reg.zig").Reg;
+const Reg = @import("../byte_code.zig").Reg;
 const Self = @This();
 
 buffer: []align(std.mem.page_size) u8,

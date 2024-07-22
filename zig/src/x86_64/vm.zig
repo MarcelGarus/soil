@@ -1,15 +1,15 @@
 const std = @import("std");
 const Alloc = std.mem.Allocator;
+const File = @import("../file.zig");
+const options = @import("root").vm_options;
 
-pub const memory_size = 2000000000;
-
-byte_code: []u8,
+byte_code: []const u8,
 machine_code: []align(std.mem.page_size) u8,
 machine_code_ptr: [*]u8,
 byte_to_machine_code: []usize,
 machine_to_byte_code: []usize,
 memory: []u8,
-labels: []LabelAndOffset,
+labels: File.Labels,
 try_stack: []TryScope,
 try_stack_len: usize,
 
@@ -29,7 +29,7 @@ pub fn run(vm: *@This()) !void {
 }
 fn actual_run(vm: *@This()) void {
     const vm_ptr = @intFromPtr(vm);
-    const mem_size = memory_size;
+    const mem_size = options.memory_size;
     const mem_base = @intFromPtr(vm.memory.ptr);
     const machine_code = @intFromPtr(vm.machine_code.ptr);
     asm volatile (

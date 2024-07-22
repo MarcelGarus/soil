@@ -2,24 +2,24 @@ const std = @import("std");
 const Alloc = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const Impl = @import("../impl.zig");
-const ByteCode = @import("byte_code.zig");
+const File = @import("../file.zig");
+const ByteCode = @import("../byte_code.zig");
 const Reg = ByteCode.Reg;
 const Regs = ByteCode.Regs;
 const Instruction = ByteCode.Instruction;
 const RegAndWord = ByteCode.RegAndWord;
 const RegAndByte = ByteCode.RegAndByte;
+const parse_instruction = @import("../parsing.zig").parse_instruction;
+const SyscallTypes = @import("../syscall_types.zig");
+const options = @import("root").vm_options;
 
-pub const trace_calls = false;
-pub const trace_regs = false;
-pub const memory_size = 2000000000;
-
-byte_code: []u8,
+byte_code: []const u8,
 ip: usize,
 regs: [8]i64,
 memory: []u8,
 call_stack: ArrayList(usize),
 try_stack: ArrayList(TryScope),
-labels: []LabelAndOffset,
+labels: File.Labels,
 
 pub const TryScope = packed struct {
     call_stack_len: usize,
@@ -27,86 +27,21 @@ pub const TryScope = packed struct {
     catch_: usize, // machine code offset
 };
 
-pub const LabelAndOffset = struct { label: []u8, offset: usize };
-
 const Self = @This();
 
-fn eat_byte(vm: *Self) !u8 {
-    const byte = vm.byte_code[vm.ip];
-    vm.ip += 1;
-    return byte;
-}
-fn eat_word(vm: *Self) !i64 {
-    const word = std.mem.readInt(i64, vm.byte_code[vm.ip..][0..8], .little);
-    vm.ip += 8;
-    return word;
-}
-fn eat_regs(vm: *Self) !Regs {
-    const byte = try vm.eat_byte();
-    return .{ .a = try Reg.parse(byte & 0xf), .b = try Reg.parse(byte >> 4) };
-}
-fn eat_reg(vm: *Self) !Reg {
-    return try Reg.parse(try vm.eat_byte());
-}
-fn eat_reg_and_word(vm: *Self) !RegAndWord {
-    return .{ .reg = try vm.eat_reg(), .word = try vm.eat_word() };
-}
-fn eat_reg_and_byte(vm: *Self) !RegAndByte {
-    return .{ .reg = try vm.eat_reg(), .byte = try vm.eat_byte() };
-}
-
-fn eat_instruction(vm: *Self) !Instruction {
-    const opcode = try vm.eat_byte();
-    return switch (opcode) {
-        0x00 => .nop,
-        0xe0 => .panic,
-        0xe1 => .{ .trystart = @intCast(try vm.eat_word()) },
-        0xe2 => .tryend,
-        0xd0 => .{ .move = try vm.eat_regs() },
-        0xd1 => .{ .movei = try vm.eat_reg_and_word() },
-        0xd2 => .{ .moveib = try vm.eat_reg_and_byte() },
-        0xd3 => .{ .load = try vm.eat_regs() },
-        0xd4 => .{ .loadb = try vm.eat_regs() },
-        0xd5 => .{ .store = try vm.eat_regs() },
-        0xd6 => .{ .storeb = try vm.eat_regs() },
-        0xd7 => .{ .push = try vm.eat_reg() },
-        0xd8 => .{ .pop = try vm.eat_reg() },
-        0xf0 => .{ .jump = @intCast(try vm.eat_word()) },
-        0xf1 => .{ .cjump = @intCast(try vm.eat_word()) },
-        0xf2 => .{ .call = @intCast(try vm.eat_word()) },
-        0xf3 => .ret,
-        0xf4 => .{ .syscall = try vm.eat_byte() },
-        0xc0 => .{ .cmp = try vm.eat_regs() },
-        0xc1 => .isequal,
-        0xc2 => .isless,
-        0xc3 => .isgreater,
-        0xc4 => .islessequal,
-        0xc5 => .isgreaterequal,
-        0xc6 => .isnotequal,
-        0xc7 => .{ .fcmp = try vm.eat_regs() },
-        0xc8 => .fisequal,
-        0xc9 => .fisless,
-        0xca => .fisgreater,
-        0xcb => .fislessequal,
-        0xcc => .fisgreaterequal,
-        0xcd => .fisnotequal,
-        0xce => .{ .inttofloat = try vm.eat_reg() },
-        0xcf => .{ .floattoint = try vm.eat_reg() },
-        0xa0 => .{ .add = try vm.eat_regs() },
-        0xa1 => .{ .sub = try vm.eat_regs() },
-        0xa2 => .{ .mul = try vm.eat_regs() },
-        0xa3 => .{ .div = try vm.eat_regs() },
-        0xa4 => .{ .rem = try vm.eat_regs() },
-        0xa5 => .{ .fadd = try vm.eat_regs() },
-        0xa6 => .{ .fsub = try vm.eat_regs() },
-        0xa7 => .{ .fmul = try vm.eat_regs() },
-        0xa8 => .{ .fdiv = try vm.eat_regs() },
-        0xb0 => .{ .and_ = try vm.eat_regs() },
-        0xb1 => .{ .or_ = try vm.eat_regs() },
-        0xb2 => .{ .xor = try vm.eat_regs() },
-        0xb3 => .{ .not = try vm.eat_reg() },
-        else => return error.UnknownOpcode,
+pub fn init(alloc: Alloc, file: File) !Self {
+    var vm = Self{
+        .byte_code = file.byte_code,
+        .ip = 0,
+        .regs = [_]i64{0} ** 8,
+        .memory = try alloc.alloc(u8, options.memory_size),
+        .call_stack = ArrayList(usize).init(alloc),
+        .try_stack = ArrayList(TryScope).init(alloc),
+        .labels = file.labels,
     };
+    vm.set_int(.sp, options.memory_size);
+    @memcpy(vm.memory[0..file.initial_memory.len], file.initial_memory);
+    return vm;
 }
 
 pub fn set_int(vm: *Self, reg: Reg, int: i64) void {
@@ -123,25 +58,41 @@ pub fn get_float(vm: *Self, reg: Reg) f64 {
 }
 
 pub fn write_mem_word(vm: *Self, where: usize, word: i64) !void {
-    if (where + 8 > memory_size) return error.InvalidWrite;
+    if (where + 8 > options.memory_size) return error.InvalidWrite;
     std.mem.writeInt(i64, vm.memory[where..][0..8], word, .little);
 }
 pub fn read_mem_word(vm: *Self, where: usize) !i64 {
-    if (where + 8 > memory_size) return error.InvalidRead;
+    if (where + 8 > options.memory_size) return error.InvalidRead;
     return std.mem.readInt(i64, vm.memory[where..][0..8], .little);
 }
 pub fn write_mem_byte(vm: *Self, where: usize, byte: u8) !void {
-    if (where + 1 > memory_size) return error.InvalidWrite;
+    if (where + 1 > options.memory_size) return error.InvalidWrite;
     vm.memory[where] = byte;
 }
 pub fn read_mem_byte(vm: *Self, where: usize) !i64 {
-    if (where + 1 > memory_size) return error.InvalidRead;
+    if (where + 1 > options.memory_size) return error.InvalidRead;
     return vm.memory[where];
 }
 
+fn panic_vm(vm: *Self) void {
+    std.debug.print("\nOh no! The program panicked.\n", .{});
+
+    for (vm.call_stack) |stack_entry| {
+        const size_of_call_instruction = 5;
+        const byte_code_offset = stack_entry - size_of_call_instruction;
+        const label = vm.labels.find_for_offset(byte_code_offset) orelse "<no label>";
+        std.debug.print("{x:10} {s}\n", .{ byte_code_offset, label });
+    }
+    std.process.exit(1);
+}
+
 fn run_single(vm: *Self, Syscalls: type) !void {
-    const instruction = try vm.eat_instruction();
-    if (trace_regs) {
+    var rest = vm.byte_code[vm.ip..];
+    const len_before = rest.len;
+    const instruction = try parse_instruction(&rest);
+    const len_after = rest.len;
+    vm.ip += (len_before - len_after);
+    if (options.trace_regs) {
         for (vm.call_stack.items) |_| std.debug.print(" ", .{});
         std.debug.print(
             "{}\t",
@@ -159,7 +110,7 @@ fn run_single(vm: *Self, Syscalls: type) !void {
             vm.ip = try_.catch_;
         } else {
             for (vm.call_stack.items) |pos| {
-                std.debug.print("{s}\n", .{search_for_label(vm.labels, pos) orelse "<no label>"});
+                std.debug.print("{s}\n", .{vm.labels.find_for_offset(pos) orelse "<no label>"});
             }
             unreachable;
             // return error.Panicked;
@@ -200,9 +151,9 @@ fn run_single(vm: *Self, Syscalls: type) !void {
             try vm.call_stack.append(return_target);
             vm.ip = target;
 
-            if (trace_calls) {
+            if (options.trace_calls) {
                 for (vm.call_stack.items) |_| std.debug.print(" ", .{});
-                if (search_for_label(vm.labels, target)) |label| {
+                if (vm.labels.find_for_offset(target)) |label| {
                     std.debug.print("{s}\n", .{label});
                 } else {
                     std.debug.print("<no label>\n", .{});
@@ -250,9 +201,9 @@ fn run_single(vm: *Self, Syscalls: type) !void {
 
                         // Move the return value into the correct registers.
                         switch (@TypeOf(result)) {
-                            void => {},
-                            i64 => vm.set_int(.a, result),
-                            Impl.TwoValues => {
+                            SyscallTypes.ReturnZeroRegs => {},
+                            SyscallTypes.ReturnOneReg => vm.set_int(.a, result),
+                            SyscallTypes.ReturnTwoRegs => {
                                 vm.set_int(.a, result.a);
                                 vm.set_int(.b, result.b);
                             },
@@ -301,7 +252,7 @@ fn run_single(vm: *Self, Syscalls: type) !void {
         .xor => |regs| vm.set_int(regs.a, vm.get_int(regs.a) ^ vm.get_int(regs.b)),
         .not => |reg| vm.set_int(reg, ~vm.get_int(reg)),
     }
-    if (trace_regs) {
+    if (options.trace_regs) {
         std.debug.print("ip = {}, sp = {}, st = {}, a = {}, b = {}, c = {}, d = {}, e = {}, f = {}\n", .{
             vm.ip,
             vm.get_int(.sp),
@@ -319,14 +270,4 @@ fn run_single(vm: *Self, Syscalls: type) !void {
 pub fn run(vm: *Self, Syscalls: type) !void {
     while (true) try vm.run_single(Syscalls);
     std.process.exit(0);
-}
-
-fn search_for_label(labels: []LabelAndOffset, offset: usize) ?[]const u8 {
-    var i = labels.len;
-    while (i > 0) {
-        i -= 1;
-        const label = labels[i];
-        if (label.offset <= offset) return label.label;
-    }
-    return null;
 }
