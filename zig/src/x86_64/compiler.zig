@@ -27,6 +27,7 @@ const MachineCode = @import("machine_code.zig");
 const Vm = @import("vm.zig");
 const LabelAndOffset = Vm.LabelAndOffset;
 const Reg = @import("reg.zig").Reg;
+const Impl = @import("../impl.zig");
 
 pub fn compile(alloc: Alloc, binary: []u8, syscalls: type) !Vm {
     var vm = Vm{
@@ -356,7 +357,7 @@ const Compiler = struct {
                                 switch (returns) {
                                     void => {},
                                     i64 => try machine_code.emit_mov_soil_rax(.a),
-                                    Vm.TwoValues => {
+                                    Impl.TwoValues => {
                                         try machine_code.emit_mov_soil_rax(.a);
                                         try machine_code.emit_mov_soil_rdx(.b);
                                     },

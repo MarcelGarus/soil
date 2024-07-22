@@ -12,10 +12,12 @@ pub const run = Impl().run;
 
 fn Impl() type {
     const Interpreter = struct {
-        const Vm = usize;
-        fn run(_: Alloc, _: []u8, _: type) !void {
-            std.log.err("Interpreter not implemented", .{});
-            std.process.exit(1);
+        const compile = @import("interpreter/compiler.zig").compile;
+        const Vm = @import("interpreter/vm.zig");
+        fn run(alloc: Alloc, binary: []u8, Syscalls: type) !void {
+            std.debug.print("compiling.\n", .{});
+            var vm = try compile(alloc, binary);
+            try vm.run(Syscalls);
         }
     };
 
@@ -25,9 +27,8 @@ fn Impl() type {
     switch (builtin.cpu.arch) {
         .x86_64 => {
             const compile = @import("x86_64/compiler.zig").compile;
-            const TheVm = @import("x86_64/vm.zig");
             return struct {
-                const Vm = TheVm;
+                const Vm = @import("x86_64/vm.zig");
                 fn run(alloc: Alloc, binary: []u8, Syscalls: type) !void {
                     var vm = try compile(alloc, binary, Syscalls);
                     try vm.run();
