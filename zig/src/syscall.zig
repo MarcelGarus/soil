@@ -25,6 +25,7 @@ fn name_by_number(number: u8) ?[]const u8 {
         14 => "ui_render",
         15 => "get_key_pressed",
         16 => "instant_now",
+        17 => "read_dir",
         else => null,
     };
 }
