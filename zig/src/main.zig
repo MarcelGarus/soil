@@ -224,15 +224,11 @@ const Syscalls = struct {
         syscall_log.info("read_dir({}, {}, {}, {})", .{ dir_path_data, dir_path_len, out_data, out_len });
 
         const dir_path = vm.memory[@intCast(dir_path_data)..][0..@intCast(dir_path_len)];
-        std.debug.print("dir path: {s}\n", .{dir_path});
         const dir = std.fs.cwd().openDir(dir_path, .{ .iterate = true }) catch return -1;
 
         var cursor: usize = @intCast(out_data);
         var it = dir.iterate();
-        while (it.next() catch |err| {
-            std.debug.print("couldn't iterate thorough dir: {}\n", .{err});
-            return -2;
-        }) |entry| {
+        while (it.next() catch return -2) |entry| {
             const kind_byte: u8 = switch (entry.kind) {
                 .file => 1,
                 .directory => 2,
