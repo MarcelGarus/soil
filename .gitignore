@@ -2,8 +2,10 @@
 .vscode/
 
 assemble
+disassemble
 soil-asm
 soil-c
+soil-zig
 
 zig/.zig-cache
 zig/zig-cache
