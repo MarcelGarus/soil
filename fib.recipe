@@ -2,9 +2,12 @@
 
 moveib a 1
 moveib b 1
-start:
-move c a
-add c b
-move a b
-move b c
-jump start
+moveib c 10  | loop counter
+loop:
+moveib d 1 sub c d                     | subtract 1 from c
+moveib d 0 cmp c d isequal cjump done  | done? break
+move d a add d b   | calculate next number
+move a b move b d  | shift: a <- b <- new
+jump loop
+done:
+syscall 0
