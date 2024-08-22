@@ -172,6 +172,7 @@ fn run_single(vm: *Self, Syscalls: type) !void {
                         2 => fun(vm, vm.get_int(.a)),
                         3 => fun(vm, vm.get_int(.a), vm.get_int(.b)),
                         4 => fun(vm, vm.get_int(.a), vm.get_int(.b), vm.get_int(.c)),
+                        5 => fun(vm, vm.get_int(.a), vm.get_int(.b), vm.get_int(.c), vm.get_int(.d)),
                         else => @compileError("handle syscalls with more params"),
                     };
 
