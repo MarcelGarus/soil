@@ -30,11 +30,12 @@ pub const std_options = .{ .log_scope_levels = &[_]std.log.ScopeLevel{
 const syscall_log = std.log.scoped(.syscall);
 
 pub fn main() !void {
-    program_start_instant = try Instant.now();
-
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     // defer std.debug.assert(gpa.deinit() == .ok);
     const alloc = gpa.allocator();
+
+    try init_program_start_instant();
+    try init_process_args(alloc);
 
     var args = std.process.args();
     _ = args.next() orelse return error.NoProgramName;
@@ -47,6 +48,19 @@ pub fn main() !void {
 }
 
 var program_start_instant: ?Instant = undefined;
+fn init_program_start_instant() !void {
+    program_start_instant = try Instant.now();
+}
+
+var process_args: ArrayList([]const u8) = undefined;
+fn init_process_args(alloc: Alloc) !void {
+    process_args = ArrayList([]const u8).init(alloc);
+    var args_iter = std.process.args();
+    _ = args_iter.skip(); // Skip the first arg, which is just the soil invocation.
+    while (true) {
+        try process_args.append(args_iter.next() orelse break);
+    }
+}
 
 var ui_inited = false;
 fn init_ui() void {
@@ -131,18 +145,13 @@ const Syscalls = struct {
 
     pub fn argc(_: *Vm) callconv(.C) Syscall.OneValue {
         syscall_log.info("argc()\n", .{});
-        var args = std.process.args();
-        var count: i64 = 0;
-        while (args.skip()) count += 1;
-        return count - 1; // Skip the first arg, which is just the soil invocation.
+        return @intCast(process_args.items.len);
     }
 
     pub fn arg(vm: *Vm, index: i64, buffer_data: i64, buffer_len: i64) callconv(.C) Syscall.OneValue {
         syscall_log.info("arg({}, {x}, {})", .{ index, buffer_data, buffer_len });
-        var args = std.process.args();
-        _ = args.skip(); // Skip the first arg, which is just the soil invocation.
-        for (0..@intCast(index)) |_| _ = args.skip();
-        const the_arg = args.next().?;
+        const unsigned_index: usize = @intCast(index);
+        const the_arg = process_args.items[unsigned_index];
         const unsigned_buffer_len: usize = @intCast(buffer_len);
         const len: usize = @min(unsigned_buffer_len, the_arg.len);
         @memcpy(vm.memory[@intCast(buffer_data)..][0..len], the_arg[0..len]);
