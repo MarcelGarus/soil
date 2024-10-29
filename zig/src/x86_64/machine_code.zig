@@ -169,7 +169,8 @@ pub fn emit_call_comptime(self: *Self, target: usize) !void { // call <target>
     try self.emit_byte(0xe8);
     try self.emit_relative_comptime(target);
 }
-pub fn emit_cdq(self: *Self) !void { // cdq
+pub fn emit_cqo(self: *Self) !void { // cqo
+    try self.emit_byte(0x48);
     try self.emit_byte(0x99);
 }
 pub fn emit_cmp_rcx_0(self: *Self) !void { // cmp rcx, 0
@@ -391,11 +392,6 @@ pub fn emit_mov_rax_mem_of_rax(self: *Self) !void { // mov rax, [rax]
     try self.emit_byte(0x48);
     try self.emit_byte(0x8b);
     try self.emit_byte(0x00);
-}
-pub fn emit_movsxd_rdx_edx(self: *Self) !void { // movsxd rdx, edx
-    try self.emit_byte(0x48);
-    try self.emit_byte(0x63);
-    try self.emit_byte(0xd2);
 }
 pub fn emit_nop(self: *Self) !void { // nop
     try self.emit_byte(0x90);

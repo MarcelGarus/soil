@@ -357,8 +357,7 @@ fn compile_to_machine_code(instruction: ByteCode.Instruction, machine_code: *Mac
         .div => |regs| {
             // idiv implicitly divides rdx:rax by the operand. rax -> quotient
             try machine_code.emit_mov_rax_soil(regs.a); // mov rax, <to>
-            try machine_code.emit_cdq(); // cdq
-            try machine_code.emit_movsxd_rdx_edx(); // movsxd rdx, rax
+            try machine_code.emit_cqo(); // cqo
             try machine_code.emit_idiv_soil(regs.b); // idiv <from>
             try machine_code.emit_mov_soil_rax(regs.a); // mov <to>, rax
         },
